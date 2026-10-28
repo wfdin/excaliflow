@@ -54,10 +54,33 @@ Open **http://localhost:3000** in your browser.
 
 ```text
 excaliflow/
-|-- index.html            Complete single-file app (UI, sketch renderer, and animation loop)
+|-- index.html            Application entry point (loads CSS & modular JS)
+|-- css/
+|   `-- style.css         Glassmorphism UI styling, toolbars, sidebars & themes
+|-- src/                  Modular JavaScript architecture
+|   |-- constants.js      Allowed types, style bindings & default element configs
+|   |-- prng.js           Deterministic mulberry32 seeded pseudo-random engine
+|   |-- state.js          Studio application reactive state & ID generator
+|   |-- sketch.js         Analytical clipping & procedural sketch engine (ShapeCache)
+|   |-- geometry.js       Arrow routing (straight, curved, elbow) & perimeter sliding
+|   |-- flow.js           BFS topological wave timing & particle flow animations
+|   |-- render.js         Multi-pass retina occlusion-free canvas renderer
+|   |-- hitTest.js        8-way resize handles, node splitting & port detection
+|   |-- elements.js       Element factory & text multi-line auto-fitting
+|   |-- history.js        Undo / redo snapshot history stack
+|   |-- templates.js      Starter architecture templates (AI Agent Swarm, RAG, etc.)
+|   |-- camera.js         World-to-screen coordinate transforms, pan & zoom
+|   |-- interactions.js   Pointer events, dragging, drawing & connection wiring
+|   |-- editor.js         Inline text editor & keyboard shortcuts
+|   |-- export.js         2x PNG, 60fps WebM video recording & JSON import/export
+|   |-- workspace.js      Multi-canvas tabs & localStorage auto-save
+|   |-- ui.js             UI controls synchronization, toasts & HUD overlays
+|   `-- init.js           Studio initialization, font loader & 60fps animation loop
+|-- dist/                 Production standalone distribution (generated via build.js)
+|-- build.js              Zero-dependency bundler for distribution builds
 |-- server.js             Zero-dependency local static server (http://localhost:3000)
 |-- verify.js             Automated test suite for geometry, arrows, and interactions
-|-- package.json          Start and test scripts
+|-- package.json          Start, build, and test scripts
 `-- README.md
 ```
 

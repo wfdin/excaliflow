@@ -1,0 +1,793 @@
+    /* Official Excalidraw Web Fonts (Excalifont, Virgil, Cascadia) */
+    @font-face {
+      font-family: 'Excalifont';
+      src: url('https://esm.sh/@excalidraw/excalidraw@0.18.0/dist/prod/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Virgil';
+      src: url('https://unpkg.com/@excalidraw/excalidraw@0.17.6/dist/excalidraw-assets/Virgil.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Cascadia';
+      src: url('https://unpkg.com/@excalidraw/excalidraw@0.17.6/dist/excalidraw-assets/Cascadia.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    :root {
+      --bg-canvas: #ffffff;
+      --panel-bg: rgba(255, 255, 255, 0.94);
+      --panel-border: rgba(15, 23, 42, 0.09);
+      --panel-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
+      --text-primary: #1b1b1f;
+      --text-secondary: #495057;
+      --text-muted: #868e96;
+      --surface-hover: #f1f0ff;
+      --surface-subtle: #f8f9fa;
+      --surface-active: #e0dfff;
+      --accent: #6965db;
+      --accent-strong: #5753d0;
+      --selection-blue: #6965db;
+      --danger: #e03131;
+      --emerald: #10b981;
+      --divider: rgba(15, 23, 42, 0.08);
+      --font-sans: 'Assistant', 'Nunito', 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'Cascadia', 'Geist Mono', monospace;
+      --font-hand: 'Excalifont', 'Virgil', 'Patrick Hand', 'Architects Daughter', 'Caveat', cursive;
+    }
+
+    body.dark-canvas {
+      --bg-canvas: #000000;
+      --panel-bg: rgba(22, 22, 27, 0.92);
+      --panel-border: rgba(255, 255, 255, 0.11);
+      --panel-shadow: 0 8px 28px -4px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06);
+      --text-primary: #f1f5f9;
+      --text-secondary: #cbd5e1;
+      --text-muted: #64748b;
+      --surface-hover: rgba(165, 162, 255, 0.12);
+      --surface-subtle: rgba(255, 255, 255, 0.05);
+      --surface-active: rgba(105, 101, 219, 0.28);
+      --accent: #a5a2ff;
+      --accent-strong: #8b87ff;
+      --selection-blue: #8b87ff;
+      --divider: rgba(255, 255, 255, 0.09);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-canvas);
+      font-family: var(--font-sans);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Dual-Layer Retina Canvas Pipeline */
+    #canvasStage {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: var(--bg-canvas);
+      transition: background-color 0.16s ease;
+    }
+
+    #staticCanvas,
+    #interactiveCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #staticCanvas {
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    #interactiveCanvas {
+      z-index: 2;
+      touch-action: none;
+      cursor: default;
+    }
+
+    /* Clean Excaliflow Floating Islands */
+    .glass-panel {
+      background: var(--panel-bg);
+      backdrop-filter: blur(14px) saturate(160%);
+      -webkit-backdrop-filter: blur(14px) saturate(160%);
+      border: 1px solid var(--panel-border);
+      box-shadow: var(--panel-shadow);
+      border-radius: 10px;
+      color: var(--text-primary);
+    }
+
+    /* Top Bar Layout */
+    #topHeaderBar {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .header-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 6px;
+      pointer-events: auto;
+    }
+
+    .brand-badge {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 2px 8px 2px 4px;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+    }
+
+    .brand-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: #6965db;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-family: var(--font-hand);
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .v-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--divider);
+      margin: 0 3px;
+    }
+
+    /* Multi-Canvas Tab Bar & Top Canvas Switcher */
+    #bottomCanvasDock {
+      position: fixed;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 22;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 6px;
+      pointer-events: auto;
+      max-width: calc(100vw - 340px);
+    }
+
+    .canvas-tab-strip {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      max-width: calc(100vw - 470px);
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding: 2px;
+      background: var(--surface-subtle);
+      border: 1px solid var(--divider);
+      border-radius: 8px;
+    }
+
+    .canvas-tab-strip::-webkit-scrollbar {
+      display: none;
+    }
+
+    .canvas-tab-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 9px;
+      border: 1px solid var(--divider);
+      border-radius: 6px;
+      background: var(--panel-bg);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      max-width: 210px;
+      transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+    }
+
+    .canvas-tab-pill:hover {
+      background: var(--surface-hover);
+      color: var(--text-primary);
+      border-color: rgba(105, 101, 219, 0.3);
+    }
+
+    .canvas-tab-pill.active {
+      background: #6965db;
+      color: #ffffff;
+      font-weight: 600;
+      border-color: #5753d0;
+      box-shadow: 0 2px 6px rgba(105, 101, 219, 0.34);
+    }
+
+    .tab-num-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      background: rgba(15, 23, 42, 0.07);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    body.dark-canvas .tab-num-badge {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-secondary);
+    }
+
+    .canvas-tab-pill.active .tab-num-badge {
+      background: rgba(255, 255, 255, 0.22);
+      color: #ffffff;
+    }
+
+    .canvas-tab-pill .tab-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 145px;
+      pointer-events: none;
+    }
+
+    .canvas-tab-pill .tab-close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1;
+      opacity: 0.6;
+      transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+    }
+
+    .canvas-tab-pill.active .tab-close {
+      color: #ffffff;
+      opacity: 0.8;
+    }
+
+    .canvas-tab-pill:hover .tab-close {
+      opacity: 0.95;
+    }
+
+    .canvas-tab-pill .tab-close:hover {
+      opacity: 1;
+      background: rgba(224, 49, 49, 0.22);
+      color: #ff6b6b;
+    }
+
+    .tab-rename-input {
+      width: 120px;
+      height: 22px;
+      padding: 0 6px;
+      border: 1.5px solid #ffffff;
+      border-radius: 4px;
+      background: var(--panel-bg);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 600;
+      outline: none;
+    }
+
+    .tab-action-btn {
+      height: 28px;
+      padding: 0 8px;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    #canvasSwitcherBtn {
+      background: var(--surface-subtle);
+      border: 1px solid var(--divider);
+      font-weight: 600;
+      color: var(--text-primary);
+      padding: 0 10px;
+      max-width: 210px;
+    }
+
+    #canvasSwitcherBtn:hover {
+      background: var(--surface-hover);
+      border-color: rgba(105, 101, 219, 0.35);
+    }
+
+    .switcher-count-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--surface-active);
+      color: var(--accent);
+    }
+
+    .ui-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease, transform 0.08s ease;
+      white-space: nowrap;
+    }
+
+    .ui-btn:hover {
+      background: var(--surface-hover);
+      color: var(--text-primary);
+    }
+
+    .ui-btn:active {
+      transform: scale(0.97);
+    }
+
+    .ui-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    .ui-btn.active {
+      background: var(--surface-active);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .ui-btn.primary {
+      background: #6965db;
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .ui-btn.primary:hover {
+      background: #5753d0;
+      color: #ffffff;
+    }
+
+    .ui-btn:disabled {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    .ui-btn.danger:hover {
+      background: rgba(224, 49, 49, 0.12);
+      color: var(--danger);
+    }
+
+    /* Excaliflow Top-Center Iconic Tool Island */
+    #bottomToolDock {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 4px;
+      pointer-events: auto;
+    }
+
+    .dock-tool-btn {
+      position: relative;
+      width: 36px;
+      height: 36px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.12s ease, color 0.12s ease, transform 0.08s ease;
+    }
+
+    .dock-tool-btn svg {
+      width: 17px;
+      height: 17px;
+      stroke: currentColor;
+      stroke-width: 1.85;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .dock-tool-btn:hover {
+      background: var(--surface-hover);
+      color: var(--text-primary);
+    }
+
+    .dock-tool-btn:active {
+      transform: scale(0.94);
+    }
+
+    .dock-tool-btn.active {
+      background: var(--surface-active);
+      color: var(--accent);
+    }
+
+    .dock-key {
+      position: absolute;
+      bottom: 2px;
+      right: 3.5px;
+      font-family: var(--font-sans);
+      font-size: 8.5px;
+      font-weight: 600;
+      opacity: 0.58;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    /* Master Flow Pill */
+    #masterFlowPill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 4px;
+    }
+
+    .flow-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      animation: flowPulseDot 1.8s infinite;
+    }
+
+    .flow-status-dot.paused {
+      background: #94a3b8;
+      box-shadow: none;
+      animation: none;
+    }
+
+    @keyframes flowPulseDot {
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.65); }
+      70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+
+    .flow-badge-meta {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--accent);
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: var(--surface-active);
+    }
+
+    /* Dropdown Popover Menu (Export / Share & Templates) */
+    .dropdown-wrap {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .dropdown-menu {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      min-width: 196px;
+      padding: 6px;
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+      z-index: 35;
+    }
+
+    .dropdown-menu.align-left {
+      right: auto;
+      left: 0;
+    }
+
+    .dropdown-menu.open {
+      display: flex;
+    }
+
+    .menu-item {
+      width: 100%;
+      justify-content: space-between;
+      height: 31px;
+      padding: 0 10px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+
+    .menu-sep {
+      height: 1px;
+      background: var(--divider);
+      margin: 4px 2px;
+    }
+
+    /* Left Properties Panel (#leftSidebar) - Clean Excaliflow Inspector */
+    #leftSidebar {
+      position: fixed;
+      top: 64px;
+      left: 12px;
+      max-height: calc(100vh - 132px);
+      width: 218px;
+      z-index: 18;
+      padding: 12px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.16s ease;
+    }
+
+    #leftSidebar.collapsed {
+      transform: translateX(-240px);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #leftSidebar::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    #leftSidebar::-webkit-scrollbar-thumb {
+      background: var(--divider);
+      border-radius: 4px;
+    }
+
+    .sidebar-section {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .grid-2x2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+    }
+
+    .segmented-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(34px, 1fr));
+      gap: 3px;
+      background: var(--surface-subtle);
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--divider);
+    }
+
+    .seg-btn {
+      height: 26px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.12s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+    }
+
+    .seg-btn:hover {
+      color: var(--text-primary);
+      background: var(--surface-hover);
+    }
+
+    .seg-btn.active {
+      background: var(--surface-active);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Color Swatches */
+    .swatch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+      padding: 2px 0;
+    }
+
+    .color-swatch {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      border: 1.5px solid rgba(0, 0, 0, 0.12);
+      cursor: pointer;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+
+    .color-swatch:hover {
+      transform: scale(1.1);
+    }
+
+    .color-swatch.active {
+      box-shadow: 0 0 0 2px var(--bg-canvas), 0 0 0 3.5px var(--accent);
+    }
+
+    /* Floating Contextual Selection Toolbar (#quickHud) */
+    #quickHud {
+      position: fixed;
+      z-index: 25;
+      display: none;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 7px;
+      transform: translate(-50%, -100%);
+      pointer-events: auto;
+      white-space: nowrap;
+    }
+
+    #quickHud.visible {
+      display: inline-flex;
+    }
+
+    .hud-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+
+    .hud-dot:hover,
+    .hud-dot.active {
+      transform: scale(1.16);
+      box-shadow: 0 0 0 2px var(--accent);
+    }
+
+    /* Bottom-Left Undo/Redo & Bottom-Right Zoom Pill */
+    #bottomLeftBar {
+      position: fixed;
+      bottom: 14px;
+      left: 14px;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 3px 5px;
+    }
+
+    #zoomPill {
+      position: fixed;
+      bottom: 14px;
+      right: 14px;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 3px 5px;
+    }
+
+    /* Subtle Onboarding Hint Pill */
+    #canvasHintPill {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 15;
+      padding: 5px 12px;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-radius: 999px;
+    }
+
+    .hint-key {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--surface-subtle);
+      border: 1px solid var(--divider);
+      color: var(--text-secondary);
+    }
+
+    /* Inline Textarea Editor */
+    #inlineEditorWrap {
+      position: fixed;
+      z-index: 30;
+      display: none;
+      pointer-events: auto;
+    }
+
+    #inlineTextEditor {
+      min-width: 80px;
+      min-height: 30px;
+      padding: 4px 8px;
+      border: 1.5px solid var(--accent);
+      border-radius: 6px;
+      background: var(--panel-bg);
+      color: var(--text-primary);
+      text-align: center;
+      resize: none;
+      outline: none;
+      overflow: hidden;
+      line-height: 1.3;
+      box-shadow: 0 4px 16px rgba(105, 101, 219, 0.22);
+    }
+
+    /* Toast status notification */
+    #studioToast {
+      position: fixed;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%) translateY(8px);
+      z-index: 40;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.18s ease;
+    }
+
+    #studioToast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }

@@ -6,9 +6,20 @@ const assert = require('assert');
 const htmlPath = path.join(__dirname, 'index.html');
 const html = fs.readFileSync(htmlPath, 'utf8');
 
-const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
-assert(scriptMatch, 'Could not find <script> block in index.html');
-const scriptCode = scriptMatch[1];
+const scriptTags = [...html.matchAll(/<script(?:\s+[^>]*src=["']([^"']+)["'][^>]*)?>([\s\S]*?)<\/script>/gi)];
+let scriptCode = '';
+for (const match of scriptTags) {
+  const src = match[1];
+  const inline = match[2];
+  if (src) {
+    const srcPath = path.join(__dirname, src);
+    assert(fs.existsSync(srcPath), `Referenced script file not found: ${src}`);
+    scriptCode += fs.readFileSync(srcPath, 'utf8') + '\n;\n';
+  } else if (inline && inline.trim()) {
+    scriptCode += inline + '\n;\n';
+  }
+}
+assert(scriptCode.trim().length > 0, 'Could not find script code in index.html');
 
 // Instrumented Path2D that records every point added to it
 class MockPath2D {
