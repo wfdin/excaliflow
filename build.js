@@ -31,6 +31,13 @@ const MODULE_FILES = [
   'init.js'
 ];
 
+const STATIC_ASSETS = [
+  'favicon.svg',
+  'favicon.ico',
+  'favicon.png',
+  'apple-touch-icon.png'
+];
+
 function build() {
   if (!fs.existsSync(DIST_DIR)) {
     fs.mkdirSync(DIST_DIR, { recursive: true });
@@ -59,7 +66,15 @@ function build() {
     console.log(`[BUILD] Generated dist/style.css (${(bundledCss.length / 1024).toFixed(1)} KB)`);
   }
 
-  // 3. Generate standalone single-file dist/index.html
+  // 3. Copy static assets (favicons, icons) to dist/
+  for (const asset of STATIC_ASSETS) {
+    const srcAsset = path.join(ROOT, asset);
+    if (fs.existsSync(srcAsset)) {
+      fs.copyFileSync(srcAsset, path.join(DIST_DIR, asset));
+    }
+  }
+
+  // 4. Generate standalone single-file dist/index.html
   const baseHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   let standalone = baseHtml;
 
