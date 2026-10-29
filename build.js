@@ -75,8 +75,17 @@ function build() {
   }
 
   // 4. Generate standalone single-file dist/index.html
+  // Inject backend API base URL (VPS domain) into the config script.
+  // Local dev: API_URL unset -> same-origin relative /api/... paths.
+  // Pages:     API_URL=https://api.example.com node build.js
+  const apiBase = (process.env.API_URL || '').trim().replace(/\/+$/, '');
   const baseHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   let standalone = baseHtml;
+
+  standalone = standalone.replace(
+    /window\.EXCALIFLOW_API_BASE\s*=\s*["'][^"']*["']/,
+    `window.EXCALIFLOW_API_BASE = ${JSON.stringify(apiBase)}`
+  );
 
   // Replace external css link with inline style in standalone dist
   standalone = standalone.replace(

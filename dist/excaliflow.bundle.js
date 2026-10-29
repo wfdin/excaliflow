@@ -66,6 +66,19 @@
       return isDark ? entry.darkFill : entry.lightFill;
     }
 
+    // Backend API base URL. Overridden at build time via API_URL env
+    // (e.g. API_URL=https://api.example.com node build.js) which injects
+    // window.EXCALIFLOW_API_BASE into index.html. Empty = same-origin,
+    // so local dev (`go run main.go` / `node server.js`) keeps working.
+    const API_BASE = (typeof window !== 'undefined' && window.EXCALIFLOW_API_BASE)
+      ? String(window.EXCALIFLOW_API_BASE).replace(/\/+$/, '')
+      : '';
+
+    function apiUrl(path) {
+      if (!path || path.charAt(0) !== '/') return API_BASE + '/' + (path || '');
+      return API_BASE + path;
+    }
+
 
 /* --- Module: prng.js --- */
     /* -------------------------------------------------------------------------
@@ -3627,7 +3640,7 @@
         isSavingToDb = true;
         updateDbSyncStatus('saving', 'Saving...');
         const payload = serializeWorkspace();
-        const res = await fetch(`/api/workspace?id=${encodeURIComponent(targetId)}`, {
+        const res = await fetch(apiUrl(`/api/workspace?id=${encodeURIComponent(targetId)}`), {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify(payload)
@@ -3657,7 +3670,7 @@
       const targetId = wsId || currentWorkspaceId || 'default';
       try {
         updateDbSyncStatus('saving', 'Loading DB...');
-        const res = await fetch(`/api/workspace?id=${encodeURIComponent(targetId)}`, {
+        const res = await fetch(apiUrl(`/api/workspace?id=${encodeURIComponent(targetId)}`), {
           headers: getAuthHeaders()
         });
         if (res.ok) {
@@ -3691,7 +3704,7 @@
         return null;
       }
       try {
-        const res = await fetch('/api/auth/me', { headers: getAuthHeaders() });
+        const res = await fetch(apiUrl('/api/auth/me'), { headers: getAuthHeaders() });
         if (res.ok) {
           const data = await res.json();
           currentUser = data.user;
@@ -3710,7 +3723,7 @@
 
     async function loginUser(identifier, password) {
       if (typeof fetch !== 'function') return false;
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: identifier, password })
@@ -3731,7 +3744,7 @@
 
     async function registerUser(username, email, password, fullName) {
       if (typeof fetch !== 'function') return false;
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(apiUrl('/api/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, email, password, fullName })
@@ -3763,7 +3776,7 @@
     async function listUserWorkspaces() {
       if (typeof fetch !== 'function') return [];
       try {
-        const res = await fetch('/api/workspaces', { headers: getAuthHeaders() });
+        const res = await fetch(apiUrl('/api/workspaces'), { headers: getAuthHeaders() });
         if (res.ok) {
           const data = await res.json();
           return data.workspaces || [];
@@ -3800,7 +3813,7 @@
     async function deleteUserWorkspace(wsId) {
       if (!wsId || typeof fetch !== 'function') return false;
       try {
-        const res = await fetch(`/api/workspace?id=${encodeURIComponent(wsId)}`, {
+        const res = await fetch(apiUrl(`/api/workspace?id=${encodeURIComponent(wsId)}`), {
           method: 'DELETE',
           headers: getAuthHeaders()
         });
@@ -4978,7 +4991,7 @@
           if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
             const payload = JSON.stringify(serializeWorkspace());
             const blob = new Blob([payload], { type: 'application/json' });
-            navigator.sendBeacon('/api/workspace?id=default', blob);
+            navigator.sendBeacon(apiUrl('/api/workspace?id=default'), blob);
           }
         } catch (err) {}
       });
@@ -5244,7 +5257,9 @@
         createNewUserWorkspace,
         deleteUserWorkspace,
         serializeWorkspace,
-        restoreWorkspaceData
+        restoreWorkspaceData,
+        apiUrl,
+        API_BASE
       });
       window.addEventListener('DOMContentLoaded', initStudioDOM);
     }

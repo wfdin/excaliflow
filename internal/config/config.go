@@ -14,6 +14,8 @@ type Config struct {
 	ServerPort string
 	StaticDir  string
 	JWTSecret  string
+	// Comma-separated list of allowed CORS origins, or "*" to allow all.
+	AllowedOrigins string
 }
 
 func getEnv(key, defaultVal string) string {
@@ -25,14 +27,15 @@ func getEnv(key, defaultVal string) string {
 
 func LoadConfig() *Config {
 	return &Config{
-		DBHost:     getEnv("DB_HOST", "localhost"),
-		DBPort:     getEnv("DB_PORT", "3306"),
-		DBUser:     getEnv("DB_USER", "root"),
-		DBPassword: getEnv("DB_PASSWORD", "12345678"),
-		DBName:     getEnv("DB_NAME", "excaliflow"),
-		ServerPort: getEnv("PORT", "3000"),
-		StaticDir:  getEnv("STATIC_DIR", "."),
-		JWTSecret:  getEnv("JWT_SECRET", "excaliflow-secret-key-change-in-production"),
+		DBHost:         getEnv("DB_HOST", "localhost"),
+		DBPort:         getEnv("DB_PORT", "3306"),
+		DBUser:         getEnv("DB_USER", "root"),
+		DBPassword:     getEnv("DB_PASSWORD", "12345678"),
+		DBName:         getEnv("DB_NAME", "excaliflow"),
+		ServerPort:     getEnv("PORT", "3000"),
+		StaticDir:      getEnv("STATIC_DIR", "."),
+		JWTSecret:      getEnv("JWT_SECRET", "excaliflow-secret-key-change-in-production"),
+		AllowedOrigins: getEnv("CORS_ORIGINS", "*"),
 	}
 }
 

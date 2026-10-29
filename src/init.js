@@ -372,7 +372,7 @@
           if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
             const payload = JSON.stringify(serializeWorkspace());
             const blob = new Blob([payload], { type: 'application/json' });
-            navigator.sendBeacon('/api/workspace?id=default', blob);
+            navigator.sendBeacon(apiUrl('/api/workspace?id=default'), blob);
           }
         } catch (err) {}
       });
@@ -638,7 +638,9 @@
         createNewUserWorkspace,
         deleteUserWorkspace,
         serializeWorkspace,
-        restoreWorkspaceData
+        restoreWorkspaceData,
+        apiUrl,
+        API_BASE
       });
       window.addEventListener('DOMContentLoaded', initStudioDOM);
     }

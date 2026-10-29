@@ -376,6 +376,11 @@
     </div>
   </div>
 
+  <!-- Backend API base URL (injected at build time from API_URL env; empty = same-origin) -->
+  <script>
+    window.EXCALIFLOW_API_BASE = "";
+  </script>
+
   <!-- Core Modules -->
   <script src="src/constants.js"></script>
   <script src="src/prng.js"></script>

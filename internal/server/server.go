@@ -12,21 +12,21 @@ import (
 )
 
 var mimeTypes = map[string]string{
-	".html":        "text/html; charset=utf-8",
-	".js":          "application/javascript; charset=utf-8",
-	".css":         "text/css; charset=utf-8",
-	".json":        "application/json; charset=utf-8",
-	".excaliflow":  "application/json; charset=utf-8",
-	".excalidraw":  "application/json; charset=utf-8",
-	".png":         "image/png",
-	".webp":        "image/webp",
-	".svg":         "image/svg+xml",
-	".ico":         "image/x-icon",
-	".woff2":       "font/woff2",
-	".woff":        "font/woff",
-	".ttf":         "font/ttf",
-	".webm":        "video/webm",
-	".mp4":         "video/mp4",
+	".html":       "text/html; charset=utf-8",
+	".js":         "application/javascript; charset=utf-8",
+	".css":        "text/css; charset=utf-8",
+	".json":       "application/json; charset=utf-8",
+	".excaliflow": "application/json; charset=utf-8",
+	".excalidraw": "application/json; charset=utf-8",
+	".png":        "image/png",
+	".webp":       "image/webp",
+	".svg":        "image/svg+xml",
+	".ico":        "image/x-icon",
+	".woff2":      "font/woff2",
+	".woff":       "font/woff",
+	".ttf":        "font/ttf",
+	".webm":       "video/webm",
+	".mp4":        "video/mp4",
 }
 
 type Server struct {
@@ -44,8 +44,13 @@ func NewServer(cfg *config.Config, handler *handlers.WorkspaceHandler, authHandl
 }
 
 func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+	allowed := parseAllowedOrigins(s.cfg.AllowedOrigins)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if isOriginAllowed(origin, allowed) {
+			w.Header().Set("Access-Control-Allow-Origin", originOrStar(origin))
+		}
+		w.Header().Set("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
 
@@ -56,6 +61,36 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func parseAllowedOrigins(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(strings.TrimSuffix(part, "/"))
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func isOriginAllowed(origin string, allowed []string) bool {
+	if len(allowed) == 0 {
+		return false
+	}
+	for _, a := range allowed {
+		if a == "*" || (origin != "" && strings.EqualFold(a, origin)) {
+			return true
+		}
+	}
+	return false
+}
+
+func originOrStar(origin string) string {
+	if origin == "" {
+		return "*"
+	}
+	return origin
 }
 
 func (s *Server) Routes() http.Handler {

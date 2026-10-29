@@ -64,4 +64,17 @@
       }
       return isDark ? entry.darkFill : entry.lightFill;
     }
+
+    // Backend API base URL. Overridden at build time via API_URL env
+    // (e.g. API_URL=https://api.example.com node build.js) which injects
+    // window.EXCALIFLOW_API_BASE into index.html. Empty = same-origin,
+    // so local dev (`go run main.go` / `node server.js`) keeps working.
+    const API_BASE = (typeof window !== 'undefined' && window.EXCALIFLOW_API_BASE)
+      ? String(window.EXCALIFLOW_API_BASE).replace(/\/+$/, '')
+      : '';
+
+    function apiUrl(path) {
+      if (!path || path.charAt(0) !== '/') return API_BASE + '/' + (path || '');
+      return API_BASE + path;
+    }
 

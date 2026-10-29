@@ -87,7 +87,7 @@
         isSavingToDb = true;
         updateDbSyncStatus('saving', 'Saving...');
         const payload = serializeWorkspace();
-        const res = await fetch(`/api/workspace?id=${encodeURIComponent(targetId)}`, {
+        const res = await fetch(apiUrl(`/api/workspace?id=${encodeURIComponent(targetId)}`), {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify(payload)
@@ -117,7 +117,7 @@
       const targetId = wsId || currentWorkspaceId || 'default';
       try {
         updateDbSyncStatus('saving', 'Loading DB...');
-        const res = await fetch(`/api/workspace?id=${encodeURIComponent(targetId)}`, {
+        const res = await fetch(apiUrl(`/api/workspace?id=${encodeURIComponent(targetId)}`), {
           headers: getAuthHeaders()
         });
         if (res.ok) {
@@ -151,7 +151,7 @@
         return null;
       }
       try {
-        const res = await fetch('/api/auth/me', { headers: getAuthHeaders() });
+        const res = await fetch(apiUrl('/api/auth/me'), { headers: getAuthHeaders() });
         if (res.ok) {
           const data = await res.json();
           currentUser = data.user;
@@ -170,7 +170,7 @@
 
     async function loginUser(identifier, password) {
       if (typeof fetch !== 'function') return false;
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: identifier, password })
@@ -191,7 +191,7 @@
 
     async function registerUser(username, email, password, fullName) {
       if (typeof fetch !== 'function') return false;
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(apiUrl('/api/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, email, password, fullName })
@@ -223,7 +223,7 @@
     async function listUserWorkspaces() {
       if (typeof fetch !== 'function') return [];
       try {
-        const res = await fetch('/api/workspaces', { headers: getAuthHeaders() });
+        const res = await fetch(apiUrl('/api/workspaces'), { headers: getAuthHeaders() });
         if (res.ok) {
           const data = await res.json();
           return data.workspaces || [];
@@ -260,7 +260,7 @@
     async function deleteUserWorkspace(wsId) {
       if (!wsId || typeof fetch !== 'function') return false;
       try {
-        const res = await fetch(`/api/workspace?id=${encodeURIComponent(wsId)}`, {
+        const res = await fetch(apiUrl(`/api/workspace?id=${encodeURIComponent(wsId)}`), {
           method: 'DELETE',
           headers: getAuthHeaders()
         });
