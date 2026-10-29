@@ -54,10 +54,12 @@
       if (!label) return;
 
       if (currentUser) {
-        label.textContent = currentUser.username || currentUser.fullName || 'User';
+        // Header shows the person's name, not the login handle/email.
+        const displayName = currentUser.fullName || currentUser.username || currentUser.email || 'User';
+        label.textContent = displayName;
         if (headerName) headerName.textContent = currentUser.fullName || currentUser.username;
         if (headerEmail) headerEmail.textContent = currentUser.email;
-        if (userBtn) userBtn.title = `Logged in as ${currentUser.username}`;
+        if (userBtn) userBtn.title = `Logged in as ${displayName}`;
       } else {
         label.textContent = 'Sign In';
         if (headerName) headerName.textContent = 'Guest User';

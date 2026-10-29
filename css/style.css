@@ -892,6 +892,17 @@
       gap: 5px;
       font-weight: 600;
     }
+    /* The header shows the account name; keep long names from stretching
+       the header island — the full value stays available in the tooltip
+       and in the account dropdown. */
+    #userAuthLabel {
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: inline-block;
+      vertical-align: bottom;
+    }
     .user-avatar-icon {
       font-size: 13px;
     }
