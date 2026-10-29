@@ -113,6 +113,20 @@
 
     <!-- Right Island: Live Flow Pill + Canvas Theme + Share/Export -->
     <div class="header-group glass-panel">
+      <!-- Shown only when the header has no room for the full tool dock;
+           it opens #bottomToolDock as a dropdown palette. -->
+      <div class="dropdown-wrap" id="toolsMenuWrap">
+        <button id="toolsMenuBtn" class="ui-btn tools-menu-btn" title="Drawing Tools" aria-haspopup="true" aria-expanded="false">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="7" height="7" rx="1.6"></rect>
+            <rect x="13" y="4" width="7" height="7" rx="1.6"></rect>
+            <rect x="4" y="13" width="7" height="7" rx="1.6"></rect>
+            <rect x="13" y="13" width="7" height="7" rx="1.6"></rect>
+          </svg>
+          <span>Tools</span>
+          <span style="font-size:9px;opacity:0.65">▾</span>
+        </button>
+      </div>
       <div id="masterFlowPill">
         <span id="flowStatusDot" class="flow-status-dot"></span>
         <button id="masterFlowBtn" class="ui-btn active" title="Toggle Live 60fps Causal Data Flow">Flow: ON</button>

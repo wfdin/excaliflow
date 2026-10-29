@@ -54,6 +54,10 @@
       --font-sans: 'Assistant', 'Nunito', 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       --font-mono: 'Cascadia', 'Geist Mono', monospace;
       --font-hand: 'Excalifont', 'Virgil', 'Patrick Hand', 'Architects Daughter', 'Caveat', cursive;
+      /* Distance from the viewport top to the bottom edge of #topHeaderBar,
+         kept in sync by init.js so floating panels stay below the header even
+         when it wraps onto a second row. Default = 12px offset + 44px bar. */
+      --header-h: 56px;
     }
 
     body.dark-canvas {
@@ -142,21 +146,30 @@
       right: 12px;
       z-index: 20;
       display: flex;
-      align-items: center;
+      /* Let the islands stack on narrow windows instead of overflowing the
+         viewport (which used to clip the Sign In button on the right). */
+      flex-wrap: wrap;
+      align-items: flex-start;
       justify-content: space-between;
-      gap: 10px;
+      gap: 8px 10px;
       pointer-events: none;
     }
 
-    /* Left island: anchored left, buttons never clip — only the canvas name ellipsizes */
+    /* Left island: full-size buttons that never clip, and it only wraps
+       internally on very narrow screens. overflow stays visible so its
+       dropdown menus are not cut off. */
     #topHeaderBar > .header-group:first-child {
-      flex-shrink: 0;
+      flex: 0 1 auto;
       min-width: 0;
+      max-width: 100%;
+      flex-wrap: wrap;
+      row-gap: 2px;
       overflow: visible;
     }
 
     #topHeaderBar > .header-group:first-child .ui-btn,
-    #topHeaderBar > .header-group:first-child .tab-action-btn {
+    #topHeaderBar > .header-group:first-child .tab-action-btn,
+    #topHeaderBar > .header-group:first-child .dropdown-wrap {
       flex-shrink: 0;
       white-space: nowrap;
     }
@@ -170,10 +183,11 @@
       vertical-align: bottom;
     }
 
-    /* Center dock: the only island allowed to shrink — scrolls instead of
+    /* Center dock: the only island allowed to shrink — it scrolls instead of
        pushing the right island (Sign In) off-screen on narrow windows */
     #topHeaderBar > #bottomToolDock {
-      flex-shrink: 1;
+      flex: 1 1 120px;
+      max-width: max-content;
       min-width: 0;
       overflow-x: auto;
       scrollbar-width: none;
@@ -194,6 +208,55 @@
       padding: 4px 6px;
       pointer-events: auto;
       flex-shrink: 0;
+    }
+
+    /* Right island (Flow / Theme / Export / Sign In): never shrinks, never
+       clips. It wraps internally on tiny screens and margin-left keeps it
+       pinned right when it drops to its own row. */
+    #topHeaderBar > .header-group:last-child {
+      flex: 0 0 auto;
+      margin-left: auto;
+      max-width: 100%;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      row-gap: 2px;
+      overflow: visible;
+    }
+
+    /* -------------------------------------------------------------------------
+     * Compact tool menu
+     * When the header cannot fit the whole tool dock (see syncToolDockMode in
+     * init.js) the dock leaves the flex flow and becomes a dropdown palette,
+     * so every tool stays reachable instead of being hidden behind a scroll.
+     * ------------------------------------------------------------------------- */
+    #toolsMenuWrap {
+      display: none;
+    }
+
+    #topHeaderBar.dock-compact #toolsMenuWrap {
+      display: inline-flex;
+    }
+
+    #topHeaderBar.dock-compact > #bottomToolDock {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      display: none;
+      width: max-content;
+      max-width: calc(100vw - 24px);
+      padding: 6px;
+      grid-template-columns: repeat(5, 36px);
+      justify-content: center;
+      overflow: visible;
+      z-index: 30;
+    }
+
+    #topHeaderBar.dock-compact > #bottomToolDock.open {
+      display: grid;
+    }
+
+    #topHeaderBar.dock-compact > #bottomToolDock .v-divider {
+      display: none;
     }
 
     .brand-badge {
@@ -596,9 +659,9 @@
     /* Left Properties Panel (#leftSidebar) - Clean Excaliflow Inspector */
     #leftSidebar {
       position: fixed;
-      top: 64px;
+      top: calc(var(--header-h) + 8px);
       left: 12px;
-      max-height: calc(100vh - 132px);
+      max-height: calc(100vh - var(--header-h) - 76px);
       width: 218px;
       z-index: 18;
       padding: 12px;
@@ -1046,6 +1109,84 @@
       color: #ef4444;
       background: rgba(239, 68, 68, 0.1);
     }
+
+    /* =========================================================================
+     * Responsive Top Bar
+     * The header wraps instead of overflowing, so these rules only reclaim
+     * space on smaller windows. Controls that are hidden here are always
+     * duplicated elsewhere (bottom canvas dock, canvas switcher, shortcuts).
+     * ========================================================================= */
+
+    /* ≤1180px — new/fork canvas are duplicated in the bottom canvas dock */
+    @media (max-width: 1180px) {
+      #topHeaderBar {
+        gap: 6px 8px;
+      }
+      #addCanvasTabBtn,
+      #forkCanvasTabBtn {
+        display: none;
+      }
+    }
+
+    /* ≤1080px — keep the brand icon, drop the wordmark */
+    @media (max-width: 1080px) {
+      .brand-badge {
+        padding: 2px 5px 2px 3px;
+      }
+      .brand-badge > span:last-child {
+        display: none;
+      }
+    }
+
+    /* ≤1024px — canvas stepping is still available via switcher + bottom tabs */
+    @media (max-width: 1024px) {
+      #prevCanvasBtn,
+      #nextCanvasBtn {
+        display: none;
+      }
+      #activeCanvasLabel {
+        max-width: 110px;
+      }
+    }
+
+    /* ≤768px — tighter chrome on tablets/phones */
+    @media (max-width: 768px) {
+      #topHeaderBar {
+        top: 8px;
+        left: 8px;
+        right: 8px;
+      }
+      #topHeaderBar .header-group {
+        padding: 3px 4px;
+        gap: 3px;
+      }
+      #topHeaderBar .ui-btn {
+        height: 30px;
+        padding: 0 8px;
+      }
+      .brand-badge {
+        display: none;
+      }
+      #activeCanvasLabel {
+        max-width: 88px;
+      }
+      /* the switcher already shows the active tab; the counter is redundant */
+      .switcher-count-badge {
+        display: none;
+      }
+    }
+
+    /* ≤560px — shrink the right island chrome; it wraps internally, so the
+       Sign In button is always fully visible */
+    @media (max-width: 560px) {
+      #topHeaderBar .header-group .v-divider {
+        margin: 0 1px;
+      }
+      #masterFlowPill {
+        gap: 4px;
+      }
+    }
+
 </style>
 </head>
 <body>
@@ -1149,6 +1290,20 @@
 
     <!-- Right Island: Live Flow Pill + Canvas Theme + Share/Export -->
     <div class="header-group glass-panel">
+      <!-- Shown only when the header has no room for the full tool dock;
+           it opens #bottomToolDock as a dropdown palette. -->
+      <div class="dropdown-wrap" id="toolsMenuWrap">
+        <button id="toolsMenuBtn" class="ui-btn tools-menu-btn" title="Drawing Tools" aria-haspopup="true" aria-expanded="false">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="7" height="7" rx="1.6"></rect>
+            <rect x="13" y="4" width="7" height="7" rx="1.6"></rect>
+            <rect x="4" y="13" width="7" height="7" rx="1.6"></rect>
+            <rect x="13" y="13" width="7" height="7" rx="1.6"></rect>
+          </svg>
+          <span>Tools</span>
+          <span style="font-size:9px;opacity:0.65">▾</span>
+        </button>
+      </div>
       <div id="masterFlowPill">
         <span id="flowStatusDot" class="flow-status-dot"></span>
         <button id="masterFlowBtn" class="ui-btn active" title="Toggle Live 60fps Causal Data Flow">Flow: ON</button>
@@ -6073,6 +6228,25 @@
       resizeCanvases();
       window.addEventListener('resize', resizeCanvases);
 
+      // Keep --header-h in sync with the real header bottom edge. The header
+      // wraps onto extra rows on narrow windows, and floating panels (e.g. the
+      // properties sidebar) must never overlap it.
+      const headerBar = document.getElementById('topHeaderBar');
+      const syncHeaderOffset = () => {
+        if (!headerBar || typeof headerBar.getBoundingClientRect !== 'function') return;
+        const rect = headerBar.getBoundingClientRect();
+        const bottom = Math.ceil(rect?.bottom) || 56;
+        document.documentElement?.style?.setProperty?.('--header-h', `${bottom}px`);
+      };
+      syncHeaderOffset();
+      window.addEventListener('resize', syncHeaderOffset);
+      window.addEventListener('orientationchange', syncHeaderOffset);
+      if (headerBar && typeof ResizeObserver !== 'undefined') {
+        try {
+          new ResizeObserver(syncHeaderOffset).observe(headerBar);
+        } catch (err) {}
+      }
+
       interactiveCanvas.addEventListener('pointerdown', e => {
         interactiveCanvas.setPointerCapture?.(e.pointerId);
         const pt = screenToWorld(e.clientX, e.clientY);
@@ -6191,6 +6365,100 @@
         reader.readAsText(file);
       });
 
+      // ---------------------------------------------------------------------
+      // Tool dock → dropdown palette when the header has no room for it.
+      // The dock keeps the exact same buttons (state, shortcuts and listeners
+      // untouched); only its layout changes, so every tool stays available.
+      // ---------------------------------------------------------------------
+      const toolDock = document.getElementById('bottomToolDock');
+      const toolsMenuBtn = document.getElementById('toolsMenuBtn');
+      const leftIsland = headerBar?.querySelector?.('.header-group');
+      const rightIsland = headerBar?.querySelector?.('.header-group:last-child');
+      let dockNaturalWidth = 0;
+      let dockCompact = false;
+      let dockSyncQueued = false;
+
+      const closeToolDock = () => {
+        if (toolDock?.classList?.contains('open')) toolDock.classList.remove('open');
+        toolsMenuBtn?.setAttribute?.('aria-expanded', 'false');
+      };
+
+      // Keep the palette's right edge under the "Tools" button while staying
+      // inside the header (it becomes a fixed-width grid when compact).
+      const positionToolDock = () => {
+        if (!headerBar || !toolDock || !toolsMenuBtn) return;
+        if (typeof headerBar.getBoundingClientRect !== 'function') return;
+        if (typeof toolsMenuBtn.getBoundingClientRect !== 'function') return;
+        const headerRect = headerBar.getBoundingClientRect();
+        const buttonRect = toolsMenuBtn.getBoundingClientRect();
+        const panelWidth = toolDock.offsetWidth || 202;
+        const maxOffset = Math.max(0, headerBar.clientWidth - panelWidth);
+        const offset = Math.round(headerRect.right - buttonRect.right);
+        toolDock.style.right = `${Math.max(0, Math.min(offset, maxOffset))}px`;
+      };
+
+      const applyToolDockMode = compact => {
+        if (!headerBar || typeof headerBar.classList?.toggle !== 'function') return;
+        headerBar.classList.toggle('dock-compact', compact);
+        closeToolDock();
+        if (compact) positionToolDock();
+      };
+
+      const syncToolDockMode = () => {
+        dockSyncQueued = false;
+        if (!headerBar || !toolDock || !leftIsland || !rightIsland) return;
+
+        // Remember the unscrolled width of the dock while it is inline.
+        if (!dockCompact) dockNaturalWidth = Math.max(dockNaturalWidth, toolDock.scrollWidth);
+
+        // Width the right island would need without the "Tools" button + gap.
+        const toolsBtnWidth = dockCompact && toolsMenuBtn ? toolsMenuBtn.offsetWidth + 4 : 0;
+        const needed = leftIsland.offsetWidth +
+          (rightIsland.offsetWidth - toolsBtnWidth) +
+          dockNaturalWidth + 20; // two 10px gaps between the three islands
+        const compact = needed > headerBar.clientWidth - 2;
+        if (compact === dockCompact) {
+          if (dockCompact) positionToolDock();
+          return;
+        }
+
+        dockCompact = compact;
+        applyToolDockMode(compact);
+        if (!compact) dockNaturalWidth = Math.max(dockNaturalWidth, toolDock.scrollWidth);
+      };
+
+      const queueToolDockSync = () => {
+        if (dockSyncQueued) return;
+        dockSyncQueued = true;
+        if (typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(syncToolDockMode);
+        } else {
+          syncToolDockMode();
+        }
+      };
+
+      toolsMenuBtn?.addEventListener('click', e => {
+        e.stopPropagation?.();
+        if (!dockCompact) return;
+        closeAllDropdowns();
+        const open = toolDock.classList.toggle('open');
+        if (open) positionToolDock();
+        toolsMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+
+      queueToolDockSync();
+      window.addEventListener('resize', queueToolDockSync);
+      if (typeof ResizeObserver !== 'undefined') {
+        try {
+          const dockObserver = new ResizeObserver(queueToolDockSync);
+          if (leftIsland) dockObserver.observe(leftIsland);
+          if (rightIsland) dockObserver.observe(rightIsland);
+        } catch (err) {}
+      }
+      if (document.fonts?.ready?.then) {
+        document.fonts.ready.then(queueToolDockSync).catch(() => {});
+      }
+
       // Dropdown toggles
       document.getElementById('canvasSwitcherBtn')?.addEventListener('click', e => {
         e.stopPropagation();
@@ -6216,7 +6484,10 @@
         closeAllDropdowns();
         if (!wasOpen) menu?.classList.add('open');
       });
-      window.addEventListener('click', () => closeAllDropdowns());
+      window.addEventListener('click', () => {
+        closeAllDropdowns();
+        closeToolDock();
+      });
 
       // User Profile & Auth Modal Handlers
       const authBackdrop = document.getElementById('authModalBackdrop');

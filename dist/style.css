@@ -41,6 +41,10 @@
       --font-sans: 'Assistant', 'Nunito', 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       --font-mono: 'Cascadia', 'Geist Mono', monospace;
       --font-hand: 'Excalifont', 'Virgil', 'Patrick Hand', 'Architects Daughter', 'Caveat', cursive;
+      /* Distance from the viewport top to the bottom edge of #topHeaderBar,
+         kept in sync by init.js so floating panels stay below the header even
+         when it wraps onto a second row. Default = 12px offset + 44px bar. */
+      --header-h: 56px;
     }
 
     body.dark-canvas {
@@ -129,21 +133,30 @@
       right: 12px;
       z-index: 20;
       display: flex;
-      align-items: center;
+      /* Let the islands stack on narrow windows instead of overflowing the
+         viewport (which used to clip the Sign In button on the right). */
+      flex-wrap: wrap;
+      align-items: flex-start;
       justify-content: space-between;
-      gap: 10px;
+      gap: 8px 10px;
       pointer-events: none;
     }
 
-    /* Left island: anchored left, buttons never clip — only the canvas name ellipsizes */
+    /* Left island: full-size buttons that never clip, and it only wraps
+       internally on very narrow screens. overflow stays visible so its
+       dropdown menus are not cut off. */
     #topHeaderBar > .header-group:first-child {
-      flex-shrink: 0;
+      flex: 0 1 auto;
       min-width: 0;
+      max-width: 100%;
+      flex-wrap: wrap;
+      row-gap: 2px;
       overflow: visible;
     }
 
     #topHeaderBar > .header-group:first-child .ui-btn,
-    #topHeaderBar > .header-group:first-child .tab-action-btn {
+    #topHeaderBar > .header-group:first-child .tab-action-btn,
+    #topHeaderBar > .header-group:first-child .dropdown-wrap {
       flex-shrink: 0;
       white-space: nowrap;
     }
@@ -157,10 +170,11 @@
       vertical-align: bottom;
     }
 
-    /* Center dock: the only island allowed to shrink — scrolls instead of
+    /* Center dock: the only island allowed to shrink — it scrolls instead of
        pushing the right island (Sign In) off-screen on narrow windows */
     #topHeaderBar > #bottomToolDock {
-      flex-shrink: 1;
+      flex: 1 1 120px;
+      max-width: max-content;
       min-width: 0;
       overflow-x: auto;
       scrollbar-width: none;
@@ -181,6 +195,55 @@
       padding: 4px 6px;
       pointer-events: auto;
       flex-shrink: 0;
+    }
+
+    /* Right island (Flow / Theme / Export / Sign In): never shrinks, never
+       clips. It wraps internally on tiny screens and margin-left keeps it
+       pinned right when it drops to its own row. */
+    #topHeaderBar > .header-group:last-child {
+      flex: 0 0 auto;
+      margin-left: auto;
+      max-width: 100%;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      row-gap: 2px;
+      overflow: visible;
+    }
+
+    /* -------------------------------------------------------------------------
+     * Compact tool menu
+     * When the header cannot fit the whole tool dock (see syncToolDockMode in
+     * init.js) the dock leaves the flex flow and becomes a dropdown palette,
+     * so every tool stays reachable instead of being hidden behind a scroll.
+     * ------------------------------------------------------------------------- */
+    #toolsMenuWrap {
+      display: none;
+    }
+
+    #topHeaderBar.dock-compact #toolsMenuWrap {
+      display: inline-flex;
+    }
+
+    #topHeaderBar.dock-compact > #bottomToolDock {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      display: none;
+      width: max-content;
+      max-width: calc(100vw - 24px);
+      padding: 6px;
+      grid-template-columns: repeat(5, 36px);
+      justify-content: center;
+      overflow: visible;
+      z-index: 30;
+    }
+
+    #topHeaderBar.dock-compact > #bottomToolDock.open {
+      display: grid;
+    }
+
+    #topHeaderBar.dock-compact > #bottomToolDock .v-divider {
+      display: none;
     }
 
     .brand-badge {
@@ -583,9 +646,9 @@
     /* Left Properties Panel (#leftSidebar) - Clean Excaliflow Inspector */
     #leftSidebar {
       position: fixed;
-      top: 64px;
+      top: calc(var(--header-h) + 8px);
       left: 12px;
-      max-height: calc(100vh - 132px);
+      max-height: calc(100vh - var(--header-h) - 76px);
       width: 218px;
       z-index: 18;
       padding: 12px;
@@ -1032,4 +1095,82 @@
     .workspace-del-btn:hover {
       color: #ef4444;
       background: rgba(239, 68, 68, 0.1);
-    }
+    }
+
+    /* =========================================================================
+     * Responsive Top Bar
+     * The header wraps instead of overflowing, so these rules only reclaim
+     * space on smaller windows. Controls that are hidden here are always
+     * duplicated elsewhere (bottom canvas dock, canvas switcher, shortcuts).
+     * ========================================================================= */
+
+    /* ≤1180px — new/fork canvas are duplicated in the bottom canvas dock */
+    @media (max-width: 1180px) {
+      #topHeaderBar {
+        gap: 6px 8px;
+      }
+      #addCanvasTabBtn,
+      #forkCanvasTabBtn {
+        display: none;
+      }
+    }
+
+    /* ≤1080px — keep the brand icon, drop the wordmark */
+    @media (max-width: 1080px) {
+      .brand-badge {
+        padding: 2px 5px 2px 3px;
+      }
+      .brand-badge > span:last-child {
+        display: none;
+      }
+    }
+
+    /* ≤1024px — canvas stepping is still available via switcher + bottom tabs */
+    @media (max-width: 1024px) {
+      #prevCanvasBtn,
+      #nextCanvasBtn {
+        display: none;
+      }
+      #activeCanvasLabel {
+        max-width: 110px;
+      }
+    }
+
+    /* ≤768px — tighter chrome on tablets/phones */
+    @media (max-width: 768px) {
+      #topHeaderBar {
+        top: 8px;
+        left: 8px;
+        right: 8px;
+      }
+      #topHeaderBar .header-group {
+        padding: 3px 4px;
+        gap: 3px;
+      }
+      #topHeaderBar .ui-btn {
+        height: 30px;
+        padding: 0 8px;
+      }
+      .brand-badge {
+        display: none;
+      }
+      #activeCanvasLabel {
+        max-width: 88px;
+      }
+      /* the switcher already shows the active tab; the counter is redundant */
+      .switcher-count-badge {
+        display: none;
+      }
+    }
+
+    /* ≤560px — shrink the right island chrome; it wraps internally, so the
+       Sign In button is always fully visible */
+    @media (max-width: 560px) {
+      #topHeaderBar .header-group .v-divider {
+        margin: 0 1px;
+      }
+      #masterFlowPill {
+        gap: 4px;
+      }
+    }
+

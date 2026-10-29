@@ -4653,6 +4653,25 @@
       resizeCanvases();
       window.addEventListener('resize', resizeCanvases);
 
+      // Keep --header-h in sync with the real header bottom edge. The header
+      // wraps onto extra rows on narrow windows, and floating panels (e.g. the
+      // properties sidebar) must never overlap it.
+      const headerBar = document.getElementById('topHeaderBar');
+      const syncHeaderOffset = () => {
+        if (!headerBar || typeof headerBar.getBoundingClientRect !== 'function') return;
+        const rect = headerBar.getBoundingClientRect();
+        const bottom = Math.ceil(rect?.bottom) || 56;
+        document.documentElement?.style?.setProperty?.('--header-h', `${bottom}px`);
+      };
+      syncHeaderOffset();
+      window.addEventListener('resize', syncHeaderOffset);
+      window.addEventListener('orientationchange', syncHeaderOffset);
+      if (headerBar && typeof ResizeObserver !== 'undefined') {
+        try {
+          new ResizeObserver(syncHeaderOffset).observe(headerBar);
+        } catch (err) {}
+      }
+
       interactiveCanvas.addEventListener('pointerdown', e => {
         interactiveCanvas.setPointerCapture?.(e.pointerId);
         const pt = screenToWorld(e.clientX, e.clientY);
@@ -4771,6 +4790,100 @@
         reader.readAsText(file);
       });
 
+      // ---------------------------------------------------------------------
+      // Tool dock → dropdown palette when the header has no room for it.
+      // The dock keeps the exact same buttons (state, shortcuts and listeners
+      // untouched); only its layout changes, so every tool stays available.
+      // ---------------------------------------------------------------------
+      const toolDock = document.getElementById('bottomToolDock');
+      const toolsMenuBtn = document.getElementById('toolsMenuBtn');
+      const leftIsland = headerBar?.querySelector?.('.header-group');
+      const rightIsland = headerBar?.querySelector?.('.header-group:last-child');
+      let dockNaturalWidth = 0;
+      let dockCompact = false;
+      let dockSyncQueued = false;
+
+      const closeToolDock = () => {
+        if (toolDock?.classList?.contains('open')) toolDock.classList.remove('open');
+        toolsMenuBtn?.setAttribute?.('aria-expanded', 'false');
+      };
+
+      // Keep the palette's right edge under the "Tools" button while staying
+      // inside the header (it becomes a fixed-width grid when compact).
+      const positionToolDock = () => {
+        if (!headerBar || !toolDock || !toolsMenuBtn) return;
+        if (typeof headerBar.getBoundingClientRect !== 'function') return;
+        if (typeof toolsMenuBtn.getBoundingClientRect !== 'function') return;
+        const headerRect = headerBar.getBoundingClientRect();
+        const buttonRect = toolsMenuBtn.getBoundingClientRect();
+        const panelWidth = toolDock.offsetWidth || 202;
+        const maxOffset = Math.max(0, headerBar.clientWidth - panelWidth);
+        const offset = Math.round(headerRect.right - buttonRect.right);
+        toolDock.style.right = `${Math.max(0, Math.min(offset, maxOffset))}px`;
+      };
+
+      const applyToolDockMode = compact => {
+        if (!headerBar || typeof headerBar.classList?.toggle !== 'function') return;
+        headerBar.classList.toggle('dock-compact', compact);
+        closeToolDock();
+        if (compact) positionToolDock();
+      };
+
+      const syncToolDockMode = () => {
+        dockSyncQueued = false;
+        if (!headerBar || !toolDock || !leftIsland || !rightIsland) return;
+
+        // Remember the unscrolled width of the dock while it is inline.
+        if (!dockCompact) dockNaturalWidth = Math.max(dockNaturalWidth, toolDock.scrollWidth);
+
+        // Width the right island would need without the "Tools" button + gap.
+        const toolsBtnWidth = dockCompact && toolsMenuBtn ? toolsMenuBtn.offsetWidth + 4 : 0;
+        const needed = leftIsland.offsetWidth +
+          (rightIsland.offsetWidth - toolsBtnWidth) +
+          dockNaturalWidth + 20; // two 10px gaps between the three islands
+        const compact = needed > headerBar.clientWidth - 2;
+        if (compact === dockCompact) {
+          if (dockCompact) positionToolDock();
+          return;
+        }
+
+        dockCompact = compact;
+        applyToolDockMode(compact);
+        if (!compact) dockNaturalWidth = Math.max(dockNaturalWidth, toolDock.scrollWidth);
+      };
+
+      const queueToolDockSync = () => {
+        if (dockSyncQueued) return;
+        dockSyncQueued = true;
+        if (typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(syncToolDockMode);
+        } else {
+          syncToolDockMode();
+        }
+      };
+
+      toolsMenuBtn?.addEventListener('click', e => {
+        e.stopPropagation?.();
+        if (!dockCompact) return;
+        closeAllDropdowns();
+        const open = toolDock.classList.toggle('open');
+        if (open) positionToolDock();
+        toolsMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+
+      queueToolDockSync();
+      window.addEventListener('resize', queueToolDockSync);
+      if (typeof ResizeObserver !== 'undefined') {
+        try {
+          const dockObserver = new ResizeObserver(queueToolDockSync);
+          if (leftIsland) dockObserver.observe(leftIsland);
+          if (rightIsland) dockObserver.observe(rightIsland);
+        } catch (err) {}
+      }
+      if (document.fonts?.ready?.then) {
+        document.fonts.ready.then(queueToolDockSync).catch(() => {});
+      }
+
       // Dropdown toggles
       document.getElementById('canvasSwitcherBtn')?.addEventListener('click', e => {
         e.stopPropagation();
@@ -4796,7 +4909,10 @@
         closeAllDropdowns();
         if (!wasOpen) menu?.classList.add('open');
       });
-      window.addEventListener('click', () => closeAllDropdowns());
+      window.addEventListener('click', () => {
+        closeAllDropdowns();
+        closeToolDock();
+      });
 
       // User Profile & Auth Modal Handlers
       const authBackdrop = document.getElementById('authModalBackdrop');
