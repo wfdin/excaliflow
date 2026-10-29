@@ -232,11 +232,20 @@ baru itu juga harus ditambahkan ke `CORS_ORIGINS` di `.env` backend, lalu
 
   Lalu ubah unit: `User=excaliflow` dan `Group=excaliflow`.
 
-- **Beacon saat tab ditutup**: `navigator.sendBeacon()` di `beforeunload`
-  tidak bisa mengirim header `Authorization`, jadi request tersebut akan
-  dibalas 401 oleh API (hanya noise di log; penyimpanan normal tetap jalan).
-  Bila ingin bersih, token bisa dititipkan lewat query `?token=` yang sudah
-  didukung backend, atau beacon dihapus.
+- **Guest vs signed-in storage**: guests (no JWT in `localStorage`) are
+  local-only — the frontend never calls `/api/workspace*` without a token and
+  the API answers 401 to anonymous calls, so one visitor can no longer read or
+  overwrite another visitor's diagram. The old shared `user_id IS NULL` row
+  (`id = 'default'`) is no longer read by the app; drop it manually if it is
+  still in the database:
+
+  ```sql
+  DELETE FROM workspaces WHERE user_id IS NULL;
+  ```
+
+- **Saving when the tab closes**: the app flushes on `beforeunload`,
+  `pagehide` and `visibilitychange` (signed-in users). `sendBeacon` is no
+  longer used because it cannot send the `Authorization` header.
 
 - **Jangan taruh `.env` di dalam folder yang disajikan sebagai file statis**
   bila `STATIC_DIR` diarahkan ke folder berisi `.env`. Pada deployment ini

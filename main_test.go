@@ -120,6 +120,35 @@ func TestUserRegistrationAndLogin(t *testing.T) {
 	}
 }
 
+func TestWorkspaceEndpointsRequireAuth(t *testing.T) {
+	_, _, _, router := setupTestApp(t)
+
+	cases := []struct {
+		name   string
+		method string
+		target string
+		body   string
+	}{
+		{"get", http.MethodGet, "/api/workspace?id=default", ""},
+		{"save", http.MethodPost, "/api/workspace?id=default", `{"tabs":[]}`},
+		{"list", http.MethodGet, "/api/workspaces", ""},
+		{"delete", http.MethodDelete, "/api/workspace?id=default", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.target, bytes.NewBufferString(tc.body))
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("Expected 401 for anonymous %s %s, got %d: %s",
+					tc.method, tc.target, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestMultiUserWorkspaceIsolation(t *testing.T) {
 	_, _, _, router := setupTestApp(t)
 	uniqueSuffix := time.Now().UnixNano()

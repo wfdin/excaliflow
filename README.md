@@ -8,7 +8,7 @@
 - **Live animated arrows.** Connect any two shapes and watch comets, pulses, neon streaks, or dashed streams travel along your arrows in order from start to finish.
 - **Easy arrow editing.** Drag any arrow endpoint around the edge of a shape, pull the middle of an arrow to curve it, or double-click an arrow to straighten it.
 - **Fast diagram building.** Press `Tab` or click a `+` port on any selected shape to add and connect the next step automatically, or drop a shape onto an existing arrow to split it in two.
-- **Multi-canvas tabs & auto-save.** Work across multiple canvas tabs in the bottom tab dock or top-left canvas switcher—create new tabs (`+ New` / `+ Canvas`), fork/duplicate a diagram (`⧉`) to compare architectures side-by-side, step between tabs (`‹` / `›`), double-click to rename, and have every tab auto-saved to your browser.
+- **Multi-canvas tabs & auto-save.** Work across multiple canvas tabs in the bottom tab dock or top-left canvas switcher—create new tabs (`+ New` / `+ Canvas`), fork/duplicate a diagram (`⧉`) to compare architectures side-by-side, step between tabs (`‹` / `›`), double-click to rename, and have every tab auto-saved (`localStorage` after 150 ms, MySQL after 400 ms for signed-in users; guests stay local-only).
 - **Ready-made starter templates.** Load built-in diagrams for **AI Agent Swarm**, **RAG Pipeline**, **How Browsers Work**, and **Microservices** in one click.
 - **Light & dark canvas + instant export.** Switch between a clean white canvas and a pitch-black neon canvas, then export a cropped 2x PNG, copy to clipboard, record a `.webm` video loop, or save and load `.excaliflow` / `.excalidraw` JSON files.
 
@@ -81,10 +81,10 @@ API Endpoints:
 - `POST /api/auth/register` — Register a new account (`username`, `email`, `password`, `fullName`).
 - `POST /api/auth/login` — Sign in and receive a JWT token (`username`/`email`, `password`).
 - `GET /api/auth/me` — Retrieve the currently authenticated user profile.
-- `GET /api/workspace?id=...` — Load diagram workspace (filtered by authenticated user).
-- `POST /api/workspace?id=...` — Save/update diagram workspace.
-- `GET /api/workspaces` — List all diagrams belonging to the current user.
-- `DELETE /api/workspace?id=...` — Delete a diagram project.
+- `GET /api/workspace?id=...` — Load diagram workspace (requires `Authorization: Bearer <JWT>`, filtered by authenticated user).
+- `POST /api/workspace?id=...` — Save/update diagram workspace (requires Bearer; anonymous calls return `401`).
+- `GET /api/workspaces` — List all diagrams belonging to the current user (requires Bearer).
+- `DELETE /api/workspace?id=...` — Delete a diagram project (requires Bearer).
 
 ---
 

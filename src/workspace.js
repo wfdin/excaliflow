@@ -45,6 +45,14 @@
       return headers;
     }
 
+    // Workspaces are stored per account. Guests keep their work in
+    // localStorage only: the API has no notion of a per-browser guest, so
+    // allowing anonymous calls would make every visitor read and overwrite
+    // one shared "default" row in MySQL.
+    function isSignedIn() {
+      return !!getAuthToken();
+    }
+
     function updateAuthUI() {
       if (typeof document === 'undefined') return;
       const label = document.getElementById('userAuthLabel');
@@ -84,6 +92,7 @@
     async function saveWorkspaceToDatabase(wsId = null) {
       if (typeof fetch !== 'function' || typeof window === 'undefined') return false;
       if (state.tabs.length === 0) return false;
+      if (!isSignedIn()) return false;
       const targetId = wsId || currentWorkspaceId || 'default';
       try {
         isSavingToDb = true;
@@ -116,6 +125,7 @@
 
     async function loadWorkspaceFromDatabase(wsId = null) {
       if (typeof fetch !== 'function' || typeof window === 'undefined') return false;
+      if (!isSignedIn()) return false;
       const targetId = wsId || currentWorkspaceId || 'default';
       try {
         updateDbSyncStatus('saving', 'Loading DB...');
@@ -224,6 +234,7 @@
 
     async function listUserWorkspaces() {
       if (typeof fetch !== 'function') return [];
+      if (!isSignedIn()) return [];
       try {
         const res = await fetch(apiUrl('/api/workspaces'), { headers: getAuthHeaders() });
         if (res.ok) {
@@ -403,6 +414,20 @@
       };
     }
 
+    let lastUnloadFlushAt = 0;
+
+    // Called when the page is hidden/unloaded. The browser can fire
+    // visibilitychange, pagehide and beforeunload for the same close, so a
+    // short gate keeps it to one flush. localStorage is written synchronously;
+    // the MySQL save only happens for signed-in users (see saveWorkspaceToStorage).
+    function flushWorkspaceNow() {
+      if (state.tabs.length === 0) return false;
+      const now = Date.now();
+      if (now - lastUnloadFlushAt < 1000) return false;
+      lastUnloadFlushAt = now;
+      return saveWorkspaceToStorage();
+    }
+
     function saveWorkspaceToStorage() {
       if (state.tabs.length === 0) return false;
       let ok = false;
@@ -415,7 +440,7 @@
           ok = false;
         }
       }
-      if (typeof fetch === 'function' && typeof window !== 'undefined') {
+      if (isSignedIn() && typeof fetch === 'function' && typeof window !== 'undefined') {
         saveWorkspaceToDatabase();
       }
       return ok;

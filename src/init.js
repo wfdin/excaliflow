@@ -482,15 +482,14 @@
       document.getElementById('forkCanvasTabBtn')?.addEventListener('click', () => duplicateCanvasTab());
       document.getElementById('bottomAddTabBtn')?.addEventListener('click', () => createCanvasTab());
       document.getElementById('bottomForkTabBtn')?.addEventListener('click', () => duplicateCanvasTab());
-      window.addEventListener('beforeunload', () => {
-        saveWorkspaceToStorage();
-        try {
-          if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-            const payload = JSON.stringify(serializeWorkspace());
-            const blob = new Blob([payload], { type: 'application/json' });
-            navigator.sendBeacon(apiUrl('/api/workspace?id=default'), blob);
-          }
-        } catch (err) {}
+      // Persist on the way out. visibilitychange/pagehide also cover mobile
+      // and tab switches; the sendBeacon call was removed because it could not
+      // send the Authorization header (guests now never write to MySQL, so it
+      // would only ever get a 401).
+      window.addEventListener('beforeunload', flushWorkspaceNow);
+      window.addEventListener('pagehide', flushWorkspaceNow);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushWorkspaceNow();
       });
       document.getElementById('btnUndo')?.addEventListener('click', undo);
       document.getElementById('btnRedo')?.addEventListener('click', redo);

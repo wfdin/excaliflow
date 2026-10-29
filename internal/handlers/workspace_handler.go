@@ -33,6 +33,24 @@ func (h *WorkspaceHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// requireUser resolves the authenticated user. Workspaces are per account and
+// guests keep their work in localStorage only, so anonymous requests are
+// rejected here instead of falling back to a shared user_id IS NULL row.
+func (h *WorkspaceHandler) requireUser(w http.ResponseWriter, r *http.Request) *int64 {
+	userID := h.authHandler.ExtractUserFromRequest(r)
+	if userID == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("WWW-Authenticate", `Bearer realm="excaliflow"`)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Authentication required",
+		})
+		return nil
+	}
+	return userID
+}
+
 // GetWorkspace handles GET /api/workspace?id=...
 func (h *WorkspaceHandler) GetWorkspace(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -40,7 +58,10 @@ func (h *WorkspaceHandler) GetWorkspace(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	userID := h.authHandler.ExtractUserFromRequest(r)
+	userID := h.requireUser(w, r)
+	if userID == nil {
+		return
+	}
 	workspaceID := strings.TrimSpace(r.URL.Query().Get("id"))
 	if workspaceID == "" {
 		workspaceID = "default"
@@ -80,7 +101,10 @@ func (h *WorkspaceHandler) SaveWorkspace(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	userID := h.authHandler.ExtractUserFromRequest(r)
+	userID := h.requireUser(w, r)
+	if userID == nil {
+		return
+	}
 
 	bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 50*1024*1024))
 	if err != nil {
@@ -168,7 +192,10 @@ func (h *WorkspaceHandler) ListWorkspaces(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	userID := h.authHandler.ExtractUserFromRequest(r)
+	userID := h.requireUser(w, r)
+	if userID == nil {
+		return
+	}
 	list, err := h.repo.ListWorkspaces(userID)
 	if err != nil {
 		log.Printf("[API ERROR] ListWorkspaces failed: %v", err)
@@ -196,7 +223,10 @@ func (h *WorkspaceHandler) DeleteWorkspace(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	userID := h.authHandler.ExtractUserFromRequest(r)
+	userID := h.requireUser(w, r)
+	if userID == nil {
+		return
+	}
 	workspaceID := strings.TrimSpace(r.URL.Query().Get("id"))
 	if workspaceID == "" {
 		w.Header().Set("Content-Type", "application/json")
