@@ -1,0 +1,30 @@
+[Unit]
+Description=Excaliflow API Service
+Documentation=https://github.com/wfdin/excaliflow
+After=network-online.target
+Wants=network-online.target
+# Uncomment if MySQL runs on the same server and must be up first:
+# After=mysql.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/www/wwwroot/api-flow.wfdin.my.id
+ExecStart=/www/wwwroot/api-flow.wfdin.my.id/excaliflow
+
+# Database, port, JWT and CORS values are read from .env inside
+# WorkingDirectory (internal/config/dotenv.go). Frontend is served by
+# Cloudflare Pages, so this box only needs the binary + .env.
+# NOTE: real environment variables win over .env, so only add values here
+# that must override the file (e.g. during a temporary debug session).
+Environment=APP_ENV=production
+
+Restart=always
+RestartSec=5s
+
+StandardOutput=append:/var/log/excaliflow-api.out.log
+StandardError=append:/var/log/excaliflow-api.err.log
+
+[Install]
+WantedBy=multi-user.target

@@ -95,6 +95,46 @@ You can also run the legacy static Node.js server:
 npm run start:node
 ```
 
+## Production Deployment
+
+Deployment is split in two:
+
+| Part | Host | Folder / setting |
+| --- | --- | --- |
+| Go API + MySQL | VPS via systemd | `/www/wwwroot/api-flow.wfdin.my.id` → `https://api-flow.wfdin.my.id` |
+| Frontend (static) | Cloudflare Pages | `https://excaliflow.pages.dev` |
+
+A ready-to-use unit file lives in [`deploy/excaliflow.service`](deploy/excaliflow.service);
+the full walkthrough (build, upload, `.env`, MySQL, Nginx reverse proxy,
+Cloudflare Pages build settings, log rotation, non-root user) is in
+[`deploy/README.md`](deploy/README.md).
+
+Backend:
+
+```sh
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o excaliflow .
+cp deploy/excaliflow.service /etc/systemd/system/excaliflow.service
+systemctl daemon-reload && systemctl enable --now excaliflow
+curl -s http://127.0.0.1:3000/api/health   # {"status":"ok","database":"connected"}
+```
+
+Because migrations are embedded in the binary (`//go:embed`) and the frontend
+is hosted on Cloudflare Pages, the VPS only needs the `excaliflow` binary and
+the `.env` file.
+
+Frontend — the API origin is injected at build time, so Cloudflare Pages must
+build with:
+
+```sh
+API_URL=https://api-flow.wfdin.my.id node build.js   # output: dist/
+```
+
+and the backend `.env` must allow that origin:
+
+```env
+CORS_ORIGINS=https://excaliflow.pages.dev
+```
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
@@ -148,6 +188,7 @@ excaliflow/
 |   |-- ui.js             UI controls synchronization, toasts & HUD overlays
 |   `-- init.js           Studio initialization, font loader & 60fps animation loop
 |-- dist/                 Production standalone distribution (generated via build.js)
+|-- deploy/               systemd unit + VPS deployment guide
 |-- build.js              Zero-dependency bundler for distribution builds
 |-- server.js             Zero-dependency local static server (http://localhost:3000)
 |-- verify.js             Automated test suite for geometry, arrows, and interactions
