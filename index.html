@@ -116,7 +116,6 @@
       <div id="masterFlowPill">
         <span id="flowStatusDot" class="flow-status-dot"></span>
         <button id="masterFlowBtn" class="ui-btn active" title="Toggle Live 60fps Causal Data Flow">Flow: ON</button>
-        <span id="flowBadgeText" class="flow-badge-meta">COMETS · 1X</span>
       </div>
       <div class="v-divider"></div>
       <button id="bgWhiteBtn" class="ui-btn active" title="Pure White Canvas (#ffffff)">☀</button>
@@ -134,6 +133,28 @@
           <input type="file" id="jsonFileInput" accept=".json,.excaliflow,.excalidraw" style="display:none" />
           <div class="menu-sep"></div>
           <button id="btnClearScene" class="ui-btn menu-item danger"><span>Clear Canvas</span><span>⌫</span></button>
+        </div>
+      </div>
+      <div class="v-divider"></div>
+      <div class="dropdown-wrap" id="userMenuWrap">
+        <button id="userAuthBtn" class="ui-btn user-btn" title="Sign In or Manage Account">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span id="userAuthLabel">Sign In</span>
+          <span style="font-size:9px;opacity:0.65;margin-left:2px">▾</span>
+        </button>
+        <div id="userDropdown" class="dropdown-menu glass-panel" style="min-width: 200px; right: 0; left: auto;">
+          <div class="dropdown-header-info" id="userDropdownHeader">
+            <strong id="dropdownUserName">Guest User</strong>
+            <small id="dropdownUserEmail">Local mode</small>
+          </div>
+          <div class="menu-sep"></div>
+          <button id="btnMyWorkspaces" class="ui-btn menu-item"><span>📁 My Diagrams</span><span>Projects</span></button>
+          <button id="btnNewProject" class="ui-btn menu-item"><span>+ New Diagram</span><span>New</span></button>
+          <div class="menu-sep"></div>
+          <button id="btnSignOut" class="ui-btn menu-item danger"><span>Sign Out</span><span>⎋</span></button>
         </div>
       </div>
     </div>
@@ -301,6 +322,59 @@
 
   <!-- Toast Status Pill -->
   <div id="studioToast" class="glass-panel"></div>
+
+  <!-- Auth Modal Dialog -->
+  <div id="authModalBackdrop" class="modal-backdrop" style="display:none">
+    <div class="modal-card glass-panel" role="dialog" aria-labelledby="authModalTitle">
+      <div class="modal-header">
+        <h3 id="authModalTitle">Sign In to Excaliflow</h3>
+        <button id="closeAuthModalBtn" class="modal-close-btn" title="Close">✕</button>
+      </div>
+      <div class="modal-tabs">
+        <button id="tabAuthLogin" class="modal-tab-btn active">Sign In</button>
+        <button id="tabAuthRegister" class="modal-tab-btn">Create Account</button>
+      </div>
+      <div id="authAlertBanner" class="auth-alert" style="display:none"></div>
+      <form id="authForm" onsubmit="return false;">
+        <div class="form-group" id="fullNameGroup" style="display:none">
+          <label for="authFullName">Full Name</label>
+          <input type="text" id="authFullName" class="form-input" placeholder="e.g. John Doe" autocomplete="name" />
+        </div>
+        <div class="form-group">
+          <label for="authUsername" id="authUsernameLabel">Username or Email</label>
+          <input type="text" id="authUsername" class="form-input" placeholder="Enter username or email" autocomplete="username" required />
+        </div>
+        <div class="form-group" id="emailGroup" style="display:none">
+          <label for="authEmail">Email Address</label>
+          <input type="email" id="authEmail" class="form-input" placeholder="name@example.com" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label for="authPassword">Password</label>
+          <input type="password" id="authPassword" class="form-input" placeholder="••••••••" autocomplete="current-password" required />
+        </div>
+        <button type="submit" id="authSubmitBtn" class="ui-btn primary modal-submit-btn">Sign In</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Workspaces / Diagram Projects Modal -->
+  <div id="workspacesModalBackdrop" class="modal-backdrop" style="display:none">
+    <div class="modal-card glass-panel wide" role="dialog" aria-labelledby="workspacesModalTitle">
+      <div class="modal-header">
+        <h3 id="workspacesModalTitle">My Diagrams</h3>
+        <button id="closeWorkspacesModalBtn" class="modal-close-btn" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="workspace-action-bar">
+          <input type="text" id="newWorkspaceNameInput" class="form-input" placeholder="New diagram project name..." />
+          <button id="btnCreateWorkspaceConfirm" class="ui-btn primary">+ Create Project</button>
+        </div>
+        <div id="workspacesListContainer" class="workspaces-grid">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Core Modules -->
   <script src="src/constants.js"></script>

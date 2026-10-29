@@ -4,9 +4,12 @@
   "description": "Hand-drawn system diagrams with live animated data flows and video export",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "go run main.go",
+    "start:node": "node server.js",
+    "migrate": "go run main.go -migrate",
     "build": "node build.js",
-    "test": "node verify.js"
+    "test": "node verify.js",
+    "test:go": "go test -v ./..."
   },
   "engines": {
     "node": ">=18.0.0"

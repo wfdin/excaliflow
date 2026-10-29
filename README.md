@@ -14,15 +14,63 @@
 
 ## How to Get Started
 
-Requires **Node.js 18+** (or open `index.html` directly in any modern browser). Excaliflow has no external npm dependencies, so no install step is needed.
+### Backend Golang & MySQL Database
 
+Excaliflow supports persistence directly to a MySQL database using a high-performance Go backend.
+
+1. **Database Configuration** (defaults match your local MySQL):
+   - **Host:** `localhost`
+   - **Port:** `3306`
+   - **User:** `root`
+   - **Password:** `12345678`
+   - **Database:** `excaliflow`
+
+   Configuration can also be overridden via environment variables:
+   `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `PORT`.
+
+2. **Run Server & Database Migrations**:
+   The Go backend automatically checks and executes pending database migrations on startup:
+   ```sh
+   go run main.go
+   # or using npm
+   npm start
+   ```
+
+   To run migrations only without starting the HTTP server:
+   ```sh
+   go run main.go -migrate
+   # or
+   npm run migrate
+   ```
+
+3. Open **http://localhost:3000** in your browser. All canvas tabs and diagrams will be automatically synchronized with MySQL in real time.
+
+### Multi-User Authentication & Diagram Management
+
+Excaliflow now features a built-in multi-user authentication system:
+- **Sign In / Create Account**: Click the `👤 Sign In` button in the top-right toolbar.
+- **Passwords**: Securely hashed with `bcrypt`.
+- **Session Tokens**: JWT authentication with 7-day validity.
+- **Data Isolation**: Each user has their own private diagrams and canvas tabs isolated in MySQL.
+- **Project Manager ("My Diagrams")**: Create named diagram projects, switch between multiple diagrams, or delete old ones.
+
+API Endpoints:
+- `POST /api/auth/register` — Register a new account (`username`, `email`, `password`, `fullName`).
+- `POST /api/auth/login` — Sign in and receive a JWT token (`username`/`email`, `password`).
+- `GET /api/auth/me` — Retrieve the currently authenticated user profile.
+- `GET /api/workspace?id=...` — Load diagram workspace (filtered by authenticated user).
+- `POST /api/workspace?id=...` — Save/update diagram workspace.
+- `GET /api/workspaces` — List all diagrams belonging to the current user.
+- `DELETE /api/workspace?id=...` — Delete a diagram project.
+
+---
+
+### Alternative: Node.js Static Server
+
+You can also run the legacy static Node.js server:
 ```sh
-git clone https://github.com/Shubhamsaboo/awesome-llm-apps.git
-cd awesome-llm-apps/advanced_llm_apps/excaliflow
-npm start
+npm run start:node
 ```
-
-Open **http://localhost:3000** in your browser.
 
 ## Keyboard Shortcuts
 

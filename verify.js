@@ -130,10 +130,11 @@ const sandbox = {
   },
   document: {
     body: { classList: { toggle: () => {} } },
+    activeElement: null,
     getElementById: () => ({
       width: 1440,
       height: 900,
-      style: {},
+      style: { display: 'none' },
       children: [],
       classList: { toggle: () => {}, add: () => {}, remove: () => {}, contains: () => false },
       addEventListener: () => {},

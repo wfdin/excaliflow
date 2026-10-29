@@ -1,0 +1,318 @@
+package repository
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+
+	"excaliflow/internal/models"
+)
+
+type WorkspaceRepository struct {
+	db *sql.DB
+}
+
+func NewWorkspaceRepository(db *sql.DB) *WorkspaceRepository {
+	return &WorkspaceRepository{db: db}
+}
+
+// GetWorkspace loads a workspace record by ID and optional userID.
+func (r *WorkspaceRepository) GetWorkspace(userID *int64, id string) (*models.WorkspaceRecord, error) {
+	id = strings.TrimSpace(id)
+
+	var (
+		query       string
+		args        []interface{}
+		rec         models.WorkspaceRecord
+		varUserID   sql.NullInt64
+		appStateRaw []byte
+		dataRaw     []byte
+	)
+
+	if userID != nil {
+		if id == "" || id == "default" {
+			// Find user's most recently updated workspace, or their default
+			query = `
+				SELECT id, user_id, name, COALESCE(active_tab_id, ''), COALESCE(app_state, '{}'), data, created_at, updated_at
+				FROM workspaces
+				WHERE user_id = ?
+				ORDER BY updated_at DESC
+				LIMIT 1
+			`
+			args = []interface{}{*userID}
+		} else {
+			query = `
+				SELECT id, user_id, name, COALESCE(active_tab_id, ''), COALESCE(app_state, '{}'), data, created_at, updated_at
+				FROM workspaces
+				WHERE id = ? AND (user_id = ? OR user_id IS NULL)
+				LIMIT 1
+			`
+			args = []interface{}{id, *userID}
+		}
+	} else {
+		if id == "" {
+			id = "default"
+		}
+		query = `
+			SELECT id, user_id, name, COALESCE(active_tab_id, ''), COALESCE(app_state, '{}'), data, created_at, updated_at
+			FROM workspaces
+			WHERE id = ?
+			LIMIT 1
+		`
+		args = []interface{}{id}
+	}
+
+	err := r.db.QueryRow(query, args...).Scan(
+		&rec.ID,
+		&varUserID,
+		&rec.Name,
+		&rec.ActiveTabID,
+		&appStateRaw,
+		&dataRaw,
+		&rec.CreatedAt,
+		&rec.UpdatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil // Not found
+		}
+		return nil, fmt.Errorf("failed to query workspace: %w", err)
+	}
+
+	if varUserID.Valid {
+		uid := varUserID.Int64
+		rec.UserID = &uid
+	}
+	rec.AppState = json.RawMessage(appStateRaw)
+	rec.Data = json.RawMessage(dataRaw)
+	return &rec, nil
+}
+
+// SaveWorkspace saves or updates the full workspace and synchronizes canvas tabs in a transaction.
+func (r *WorkspaceRepository) SaveWorkspace(
+	userID *int64,
+	id string,
+	name string,
+	activeTabID string,
+	appStateJSON []byte,
+	rawPayload []byte,
+	tabs []models.TabPayload,
+) (*models.WorkspaceRecord, error) {
+	id = strings.TrimSpace(id)
+	if id == "" || id == "default" {
+		if userID != nil {
+			id = fmt.Sprintf("ws_user_%d_main", *userID)
+		} else {
+			id = "default"
+		}
+	}
+
+	if strings.TrimSpace(name) == "" {
+		if len(tabs) > 0 && strings.TrimSpace(tabs[0].Name) != "" {
+			name = tabs[0].Name
+		} else {
+			name = "Default Workspace"
+		}
+	}
+
+	appStateStr := "{}"
+	if len(appStateJSON) > 0 && string(appStateJSON) != "null" {
+		appStateStr = string(appStateJSON)
+	}
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// 1. Upsert into workspaces table with user_id
+	var upsertQuery string
+	var args []interface{}
+
+	if userID != nil {
+		upsertQuery = `
+			INSERT INTO workspaces (id, user_id, name, active_tab_id, app_state, data, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, NOW())
+			ON DUPLICATE KEY UPDATE
+				user_id = VALUES(user_id),
+				name = VALUES(name),
+				active_tab_id = VALUES(active_tab_id),
+				app_state = VALUES(app_state),
+				data = VALUES(data),
+				updated_at = NOW()
+		`
+		args = []interface{}{id, *userID, name, activeTabID, appStateStr, string(rawPayload)}
+	} else {
+		upsertQuery = `
+			INSERT INTO workspaces (id, user_id, name, active_tab_id, app_state, data, updated_at)
+			VALUES (?, NULL, ?, ?, ?, ?, NOW())
+			ON DUPLICATE KEY UPDATE
+				name = VALUES(name),
+				active_tab_id = VALUES(active_tab_id),
+				app_state = VALUES(app_state),
+				data = VALUES(data),
+				updated_at = NOW()
+		`
+		args = []interface{}{id, name, activeTabID, appStateStr, string(rawPayload)}
+	}
+
+	_, err = tx.Exec(upsertQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert workspace: %w", err)
+	}
+
+	// 2. Synchronize canvas_tabs
+	if _, err := tx.Exec("DELETE FROM canvas_tabs WHERE workspace_id = ?", id); err != nil {
+		return nil, fmt.Errorf("failed to clear existing canvas tabs: %w", err)
+	}
+
+	if len(tabs) > 0 {
+		insertTabStmt, err := tx.Prepare(`
+			INSERT INTO canvas_tabs (
+				id, workspace_id, name, sort_order, scroll_x, scroll_y, zoom,
+				canvas_bg, flow_enabled, flow_mode, flow_speed, elements, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+		`)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepare insert tab statement: %w", err)
+		}
+		defer insertTabStmt.Close()
+
+		for idx, tab := range tabs {
+			tabID := tab.ID
+			if strings.TrimSpace(tabID) == "" {
+				tabID = fmt.Sprintf("tab_%d", idx+1)
+			}
+			tabName := tab.Name
+			if strings.TrimSpace(tabName) == "" {
+				tabName = fmt.Sprintf("Canvas %d", idx+1)
+			}
+			elementsStr := "[]"
+			if len(tab.Elements) > 0 && string(tab.Elements) != "null" {
+				elementsStr = string(tab.Elements)
+			}
+			canvasBg := tab.CanvasBg
+			if canvasBg == "" {
+				canvasBg = "#ffffff"
+			}
+			flowMode := tab.FlowMode
+			if flowMode == "" {
+				flowMode = "comets"
+			}
+			flowSpeed := tab.FlowSpeed
+			if flowSpeed <= 0 {
+				flowSpeed = 1.0
+			}
+			zoom := tab.Zoom
+			if zoom <= 0 {
+				zoom = 1.0
+			}
+
+			_, err = insertTabStmt.Exec(
+				tabID,
+				id,
+				tabName,
+				idx,
+				tab.ScrollX,
+				tab.ScrollY,
+				zoom,
+				canvasBg,
+				tab.FlowEnabled,
+				flowMode,
+				flowSpeed,
+				elementsStr,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to insert tab %s: %w", tabID, err)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return r.GetWorkspace(userID, id)
+}
+
+// ListWorkspaces returns a summary of workspaces filtered by userID
+func (r *WorkspaceRepository) ListWorkspaces(userID *int64) ([]models.WorkspaceSummary, error) {
+	var (
+		query string
+		args  []interface{}
+	)
+
+	if userID != nil {
+		query = `
+			SELECT w.id, w.user_id, w.name, COALESCE(w.active_tab_id, ''),
+			       (SELECT COUNT(*) FROM canvas_tabs t WHERE t.workspace_id = w.id) AS tab_count,
+			       w.updated_at
+			FROM workspaces w
+			WHERE w.user_id = ?
+			ORDER BY w.updated_at DESC
+		`
+		args = []interface{}{*userID}
+	} else {
+		query = `
+			SELECT w.id, w.user_id, w.name, COALESCE(w.active_tab_id, ''),
+			       (SELECT COUNT(*) FROM canvas_tabs t WHERE t.workspace_id = w.id) AS tab_count,
+			       w.updated_at
+			FROM workspaces w
+			WHERE w.user_id IS NULL
+			ORDER BY w.updated_at DESC
+		`
+		args = []interface{}{}
+	}
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query workspaces list: %w", err)
+	}
+	defer rows.Close()
+
+	var list []models.WorkspaceSummary
+	for rows.Next() {
+		var item models.WorkspaceSummary
+		var uid sql.NullInt64
+		if err := rows.Scan(&item.ID, &uid, &item.Name, &item.ActiveTabID, &item.TabCount, &item.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan workspace summary: %w", err)
+		}
+		if uid.Valid {
+			val := uid.Int64
+			item.UserID = &val
+		}
+		list = append(list, item)
+	}
+
+	return list, nil
+}
+
+// DeleteWorkspace removes a workspace owned by the user
+func (r *WorkspaceRepository) DeleteWorkspace(userID *int64, id string) error {
+	var (
+		query string
+		args  []interface{}
+	)
+
+	if userID != nil {
+		query = "DELETE FROM workspaces WHERE id = ? AND user_id = ?"
+		args = []interface{}{id, *userID}
+	} else {
+		query = "DELETE FROM workspaces WHERE id = ? AND user_id IS NULL"
+		args = []interface{}{id}
+	}
+
+	res, err := r.db.Exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to delete workspace: %w", err)
+	}
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}

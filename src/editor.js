@@ -65,6 +65,12 @@
     }
 
     function handleKeyDown(e) {
+      // Don't hijack keyboard when a modal dialog is open or focus is in a form input
+      const activeTag = document.activeElement?.tagName?.toUpperCase();
+      if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
+      if (document.getElementById('authModalBackdrop')?.style.display !== 'none') return;
+      if (document.getElementById('workspacesModalBackdrop')?.style.display !== 'none') return;
+
       if (state.editingTabId) return;
       const isEditing = Boolean(state.editingId);
       if (isEditing) {

@@ -122,6 +122,12 @@
       }
 
       window.addEventListener('keydown', e => {
+        // Ignore all canvas shortcuts when a modal is open or focus is in a text input
+        const activeTag = document.activeElement?.tagName?.toUpperCase();
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
+        if (document.getElementById('authModalBackdrop')?.style.display !== 'none') return;
+        if (document.getElementById('workspacesModalBackdrop')?.style.display !== 'none') return;
+
         if (e.code === 'Space' && !state.editingId) {
           state.isSpacePanning = true;
           updateInteractiveCursor();
@@ -173,6 +179,186 @@
       });
       window.addEventListener('click', () => closeAllDropdowns());
 
+      // User Profile & Auth Modal Handlers
+      const authBackdrop = document.getElementById('authModalBackdrop');
+      const wsBackdrop = document.getElementById('workspacesModalBackdrop');
+      const userBtn = document.getElementById('userAuthBtn');
+      const userDropdown = document.getElementById('userDropdown');
+      let authMode = 'login';
+
+      function openAuthModal(mode = 'login') {
+        authMode = mode;
+        const title = document.getElementById('authModalTitle');
+        const submitBtn = document.getElementById('authSubmitBtn');
+        const fnGroup = document.getElementById('fullNameGroup');
+        const emGroup = document.getElementById('emailGroup');
+        const alertBanner = document.getElementById('authAlertBanner');
+        const unLabel = document.getElementById('authUsernameLabel');
+        const tabLogin = document.getElementById('tabAuthLogin');
+        const tabReg = document.getElementById('tabAuthRegister');
+
+        if (alertBanner) alertBanner.style.display = 'none';
+        tabLogin?.classList.toggle('active', mode === 'login');
+        tabReg?.classList.toggle('active', mode === 'register');
+
+        if (mode === 'login') {
+          if (title) title.textContent = 'Sign In to Excaliflow';
+          if (submitBtn) submitBtn.textContent = 'Sign In';
+          if (unLabel) unLabel.textContent = 'Username or Email';
+          if (fnGroup) fnGroup.style.display = 'none';
+          if (emGroup) emGroup.style.display = 'none';
+        } else {
+          if (title) title.textContent = 'Create Account';
+          if (submitBtn) submitBtn.textContent = 'Create Account';
+          if (unLabel) unLabel.textContent = 'Username';
+          if (fnGroup) fnGroup.style.display = 'block';
+          if (emGroup) emGroup.style.display = 'block';
+        }
+        if (authBackdrop) authBackdrop.style.display = 'flex';
+      }
+
+      function closeAuthModal() {
+        if (authBackdrop) authBackdrop.style.display = 'none';
+      }
+
+      userBtn?.addEventListener('click', e => {
+        e.stopPropagation();
+        if (currentUser) {
+          const wasOpen = userDropdown?.classList.contains('open');
+          closeAllDropdowns();
+          if (!wasOpen) userDropdown?.classList.add('open');
+        } else {
+          closeAllDropdowns();
+          openAuthModal('login');
+        }
+      });
+
+      document.getElementById('tabAuthLogin')?.addEventListener('click', () => openAuthModal('login'));
+      document.getElementById('tabAuthRegister')?.addEventListener('click', () => openAuthModal('register'));
+      document.getElementById('closeAuthModalBtn')?.addEventListener('click', closeAuthModal);
+      authBackdrop?.addEventListener('click', e => {
+        if (e.target === authBackdrop) closeAuthModal();
+      });
+
+      document.getElementById('authForm')?.addEventListener('submit', async e => {
+        e.preventDefault();
+        const alertBanner = document.getElementById('authAlertBanner');
+        const submitBtn = document.getElementById('authSubmitBtn');
+        const unVal = document.getElementById('authUsername')?.value?.trim();
+        const pwVal = document.getElementById('authPassword')?.value;
+        const emVal = document.getElementById('authEmail')?.value?.trim();
+        const fnVal = document.getElementById('authFullName')?.value?.trim();
+
+        if (alertBanner) alertBanner.style.display = 'none';
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Please wait...';
+        }
+
+        try {
+          if (authMode === 'login') {
+            await loginUser(unVal, pwVal);
+          } else {
+            await registerUser(unVal, emVal, pwVal, fnVal);
+          }
+          closeAuthModal();
+        } catch (err) {
+          if (alertBanner) {
+            alertBanner.textContent = err.message || 'Authentication error';
+            alertBanner.style.display = 'block';
+          }
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
+          }
+        }
+      });
+
+      document.getElementById('btnSignOut')?.addEventListener('click', () => {
+        closeAllDropdowns();
+        logoutUser();
+      });
+
+      // Workspaces / Projects Modal
+      async function renderWorkspacesListModal() {
+        const container = document.getElementById('workspacesListContainer');
+        if (!container) return;
+        container.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-muted)">Loading diagrams...</div>';
+        const list = await listUserWorkspaces();
+        if (!list || list.length === 0) {
+          container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted)">No saved diagrams yet. Create your first project above!</div>';
+          return;
+        }
+        container.innerHTML = '';
+        list.forEach(ws => {
+          const card = document.createElement('div');
+          const isCurrent = ws.id === currentWorkspaceId;
+          card.className = `workspace-card${isCurrent ? ' active' : ''}`;
+          const dateStr = ws.updatedAt ? new Date(ws.updatedAt).toLocaleDateString() : '';
+          card.innerHTML = `
+            <div class="workspace-info">
+              <span class="workspace-title">${ws.name || 'Untitled Diagram'} ${isCurrent ? '<small style="color:var(--accent);font-weight:700">(Active)</small>' : ''}</span>
+              <span class="workspace-meta">${ws.tabCount || 1} canvas tab(s) Â· Updated ${dateStr}</span>
+            </div>
+            <div class="workspace-actions">
+              <button class="ui-btn" style="padding:4px 8px;font-size:11px" data-open-ws="${ws.id}">Open</button>
+              <button class="workspace-del-btn" title="Delete diagram" data-del-ws="${ws.id}">ðŸ—‘</button>
+            </div>
+          `;
+          card.querySelector('[data-open-ws]')?.addEventListener('click', async ev => {
+            ev.stopPropagation();
+            await switchUserWorkspace(ws.id);
+            if (wsBackdrop) wsBackdrop.style.display = 'none';
+          });
+          card.querySelector('[data-del-ws]')?.addEventListener('click', async ev => {
+            ev.stopPropagation();
+            if (confirm(`Delete diagram "${ws.name}"?`)) {
+              await deleteUserWorkspace(ws.id);
+              renderWorkspacesListModal();
+            }
+          });
+          container.appendChild(card);
+        });
+      }
+
+      document.getElementById('btnMyWorkspaces')?.addEventListener('click', () => {
+        closeAllDropdowns();
+        if (!currentUser) {
+          openAuthModal('login');
+          return;
+        }
+        if (wsBackdrop) wsBackdrop.style.display = 'flex';
+        renderWorkspacesListModal();
+      });
+
+      document.getElementById('btnNewProject')?.addEventListener('click', () => {
+        closeAllDropdowns();
+        if (!currentUser) {
+          openAuthModal('login');
+          return;
+        }
+        if (wsBackdrop) wsBackdrop.style.display = 'flex';
+        renderWorkspacesListModal();
+        document.getElementById('newWorkspaceNameInput')?.focus();
+      });
+
+      document.getElementById('btnCreateWorkspaceConfirm')?.addEventListener('click', async () => {
+        const input = document.getElementById('newWorkspaceNameInput');
+        const name = input?.value?.trim();
+        if (!name) return;
+        await createNewUserWorkspace(name);
+        if (input) input.value = '';
+        if (wsBackdrop) wsBackdrop.style.display = 'none';
+      });
+
+      document.getElementById('closeWorkspacesModalBtn')?.addEventListener('click', () => {
+        if (wsBackdrop) wsBackdrop.style.display = 'none';
+      });
+      wsBackdrop?.addEventListener('click', e => {
+        if (e.target === wsBackdrop) wsBackdrop.style.display = 'none';
+      });
+
       document.getElementById('sidebarToggleBtn')?.addEventListener('click', toggleSidebar);
       document.getElementById('prevCanvasBtn')?.addEventListener('click', () => stepCanvasTab(-1));
       document.getElementById('nextCanvasBtn')?.addEventListener('click', () => stepCanvasTab(1));
@@ -180,7 +366,16 @@
       document.getElementById('forkCanvasTabBtn')?.addEventListener('click', () => duplicateCanvasTab());
       document.getElementById('bottomAddTabBtn')?.addEventListener('click', () => createCanvasTab());
       document.getElementById('bottomForkTabBtn')?.addEventListener('click', () => duplicateCanvasTab());
-      window.addEventListener('beforeunload', () => saveWorkspaceToStorage());
+      window.addEventListener('beforeunload', () => {
+        saveWorkspaceToStorage();
+        try {
+          if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+            const payload = JSON.stringify(serializeWorkspace());
+            const blob = new Blob([payload], { type: 'application/json' });
+            navigator.sendBeacon('/api/workspace?id=default', blob);
+          }
+        } catch (err) {}
+      });
       document.getElementById('btnUndo')?.addEventListener('click', undo);
       document.getElementById('btnRedo')?.addEventListener('click', redo);
       document.getElementById('bgWhiteBtn')?.addEventListener('click', () => setCanvasBackground('#ffffff'));
@@ -331,6 +526,18 @@
       }
       updateHeaderButtons();
 
+      // Check and sync with MySQL database
+      if (typeof fetch === 'function' && typeof window !== 'undefined') {
+        fetchCurrentUser().then(() => {
+          return loadWorkspaceFromDatabase();
+        }).then(loadedFromDb => {
+          if (!loadedFromDb) {
+            saveWorkspaceToDatabase();
+          }
+          updateHeaderButtons();
+        }).catch(() => {});
+      }
+
       let lastFrameTime = performance.now() / 1000;
       const tick = (nowMs) => {
         const timeSec = nowMs / 1000;
@@ -420,6 +627,16 @@
         closeCanvasTab,
         saveWorkspaceToStorage,
         loadWorkspaceFromStorage,
+        saveWorkspaceToDatabase,
+        loadWorkspaceFromDatabase,
+        loginUser,
+        registerUser,
+        logoutUser,
+        fetchCurrentUser,
+        listUserWorkspaces,
+        switchUserWorkspace,
+        createNewUserWorkspace,
+        deleteUserWorkspace,
         serializeWorkspace,
         restoreWorkspaceData
       });

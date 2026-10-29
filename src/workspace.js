@@ -1,8 +1,281 @@
     /* -------------------------------------------------------------------------
-     * 14b. Multi-Canvas Workspace Tabs & LocalStorage Auto-Save
+     * 14b. Multi-Canvas Workspace Tabs & LocalStorage / Database Auto-Save
      * ------------------------------------------------------------------------- */
     const WORKSPACE_STORAGE_KEY = 'excaliflow_workspace_v1';
+    const AUTH_TOKEN_KEY = 'excaliflow_auth_token';
+    const CURRENT_WS_KEY = 'excaliflow_current_ws';
+
     let workspaceSaveTimer = null;
+    let dbSaveTimer = null;
+    let isSavingToDb = false;
+    let currentUser = null;
+    let currentWorkspaceId = (function() {
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          return window.localStorage.getItem(CURRENT_WS_KEY) || 'default';
+        }
+      } catch (e) {}
+      return 'default';
+    })();
+
+    function getAuthToken() {
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          return window.localStorage.getItem(AUTH_TOKEN_KEY) || '';
+        }
+      } catch (e) {}
+      return '';
+    }
+
+    function setAuthToken(token) {
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          if (token) window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+          else window.localStorage.removeItem(AUTH_TOKEN_KEY);
+        }
+      } catch (e) {}
+    }
+
+    function getAuthHeaders() {
+      const headers = { 'Content-Type': 'application/json' };
+      const token = getAuthToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      return headers;
+    }
+
+    function updateAuthUI() {
+      if (typeof document === 'undefined') return;
+      const label = document.getElementById('userAuthLabel');
+      const headerName = document.getElementById('dropdownUserName');
+      const headerEmail = document.getElementById('dropdownUserEmail');
+      const userBtn = document.getElementById('userAuthBtn');
+      if (!label) return;
+
+      if (currentUser) {
+        label.textContent = currentUser.username || currentUser.fullName || 'User';
+        if (headerName) headerName.textContent = currentUser.fullName || currentUser.username;
+        if (headerEmail) headerEmail.textContent = currentUser.email;
+        if (userBtn) userBtn.title = `Logged in as ${currentUser.username}`;
+      } else {
+        label.textContent = 'Sign In';
+        if (headerName) headerName.textContent = 'Guest User';
+        if (headerEmail) headerEmail.textContent = 'Local Mode';
+        if (userBtn) userBtn.title = 'Sign In or Create Account';
+      }
+    }
+
+    function updateDbSyncStatus(status, text) {
+      if (typeof document === 'undefined') return;
+      const badge = document.getElementById('dbSyncBadge');
+      const dot = document.getElementById('dbSyncDot');
+      const label = document.getElementById('dbSyncText');
+      if (!badge) return;
+      badge.className = `db-sync-badge ${status}`;
+      if (label) label.textContent = text || (status === 'synced' ? 'DB Synced' : status === 'saving' ? 'Saving...' : 'DB Offline');
+      if (dot) {
+        dot.className = `db-sync-dot ${status}`;
+      }
+    }
+
+    async function saveWorkspaceToDatabase(wsId = null) {
+      if (typeof fetch !== 'function' || typeof window === 'undefined') return false;
+      if (state.tabs.length === 0) return false;
+      const targetId = wsId || currentWorkspaceId || 'default';
+      try {
+        isSavingToDb = true;
+        updateDbSyncStatus('saving', 'Saving...');
+        const payload = serializeWorkspace();
+        const res = await fetch(`/api/workspace?id=${encodeURIComponent(targetId)}`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const respData = await res.json().catch(() => ({}));
+          if (respData.id && (!currentWorkspaceId || currentWorkspaceId === 'default')) {
+            currentWorkspaceId = respData.id;
+            try { window.localStorage.setItem(CURRENT_WS_KEY, currentWorkspaceId); } catch(e) {}
+          }
+          updateDbSyncStatus('synced', 'DB Synced');
+          return true;
+        } else {
+          updateDbSyncStatus('error', 'DB Error');
+          return false;
+        }
+      } catch (err) {
+        updateDbSyncStatus('offline', 'DB Offline');
+        return false;
+      } finally {
+        isSavingToDb = false;
+      }
+    }
+
+    async function loadWorkspaceFromDatabase(wsId = null) {
+      if (typeof fetch !== 'function' || typeof window === 'undefined') return false;
+      const targetId = wsId || currentWorkspaceId || 'default';
+      try {
+        updateDbSyncStatus('saving', 'Loading DB...');
+        const res = await fetch(`/api/workspace?id=${encodeURIComponent(targetId)}`, {
+          headers: getAuthHeaders()
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.tabs) && data.tabs.length > 0) {
+            const restored = restoreWorkspaceData(data);
+            if (restored) {
+              if (wsId) {
+                currentWorkspaceId = wsId;
+                try { window.localStorage.setItem(CURRENT_WS_KEY, currentWorkspaceId); } catch(e) {}
+              }
+              updateDbSyncStatus('synced', 'DB Synced');
+              return true;
+            }
+          }
+        }
+        updateDbSyncStatus('offline', 'No DB Data');
+        return false;
+      } catch (err) {
+        updateDbSyncStatus('offline', 'DB Offline');
+        return false;
+      }
+    }
+
+    async function fetchCurrentUser() {
+      if (typeof fetch !== 'function' || typeof window === 'undefined') return null;
+      const token = getAuthToken();
+      if (!token) {
+        currentUser = null;
+        updateAuthUI();
+        return null;
+      }
+      try {
+        const res = await fetch('/api/auth/me', { headers: getAuthHeaders() });
+        if (res.ok) {
+          const data = await res.json();
+          currentUser = data.user;
+          updateAuthUI();
+          return currentUser;
+        } else {
+          setAuthToken('');
+          currentUser = null;
+          updateAuthUI();
+          return null;
+        }
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function loginUser(identifier, password) {
+      if (typeof fetch !== 'function') return false;
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: identifier, password })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to login');
+      }
+      setAuthToken(data.token);
+      currentUser = data.user;
+      updateAuthUI();
+      currentWorkspaceId = 'default';
+      try { window.localStorage.removeItem(CURRENT_WS_KEY); } catch (e) {}
+      await loadWorkspaceFromDatabase('default');
+      showToast(`Welcome back, ${currentUser.fullName || currentUser.username}!`);
+      return data;
+    }
+
+    async function registerUser(username, email, password, fullName) {
+      if (typeof fetch !== 'function') return false;
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password, fullName })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to register');
+      }
+      setAuthToken(data.token);
+      currentUser = data.user;
+      updateAuthUI();
+      currentWorkspaceId = 'default';
+      try { window.localStorage.removeItem(CURRENT_WS_KEY); } catch (e) {}
+      await saveWorkspaceToDatabase('default');
+      showToast(`Account created! Welcome, ${currentUser.fullName || currentUser.username}!`);
+      return data;
+    }
+
+    function logoutUser() {
+      setAuthToken('');
+      currentUser = null;
+      currentWorkspaceId = 'default';
+      try { window.localStorage.removeItem(CURRENT_WS_KEY); } catch (e) {}
+      updateAuthUI();
+      showToast('Signed out');
+      loadWorkspaceFromStorage();
+    }
+
+    async function listUserWorkspaces() {
+      if (typeof fetch !== 'function') return [];
+      try {
+        const res = await fetch('/api/workspaces', { headers: getAuthHeaders() });
+        if (res.ok) {
+          const data = await res.json();
+          return data.workspaces || [];
+        }
+      } catch (e) {}
+      return [];
+    }
+
+    async function switchUserWorkspace(wsId) {
+      if (!wsId) return false;
+      const ok = await loadWorkspaceFromDatabase(wsId);
+      if (ok) {
+        currentWorkspaceId = wsId;
+        try { window.localStorage.setItem(CURRENT_WS_KEY, currentWorkspaceId); } catch(e) {}
+        showToast('Switched diagram project');
+      }
+      return ok;
+    }
+
+    async function createNewUserWorkspace(name) {
+      const cleanName = (name || '').trim() || 'Untitled Project';
+      const newWsId = 'ws_' + Math.random().toString(36).slice(2, 10);
+      currentWorkspaceId = newWsId;
+      try { window.localStorage.setItem(CURRENT_WS_KEY, currentWorkspaceId); } catch(e) {}
+      state.elements = [];
+      state.selectedIds.clear();
+      state.tabs = [];
+      ensureInitialTab(cleanName);
+      await saveWorkspaceToDatabase(newWsId);
+      showToast(`Created project "${cleanName}"`);
+      return newWsId;
+    }
+
+    async function deleteUserWorkspace(wsId) {
+      if (!wsId || typeof fetch !== 'function') return false;
+      try {
+        const res = await fetch(`/api/workspace?id=${encodeURIComponent(wsId)}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        if (res.ok) {
+          if (currentWorkspaceId === wsId) {
+            currentWorkspaceId = 'default';
+            try { window.localStorage.removeItem(CURRENT_WS_KEY); } catch(e) {}
+            await loadWorkspaceFromDatabase('default');
+          }
+          showToast('Project deleted');
+          return true;
+        }
+      } catch (e) {}
+      return false;
+    }
 
     function getBrowserStorage() {
       try {
@@ -130,23 +403,38 @@
 
     function saveWorkspaceToStorage() {
       if (state.tabs.length === 0) return false;
+      let ok = false;
       const storage = getBrowserStorage();
-      if (!storage || typeof storage.setItem !== 'function') return false;
-      try {
-        storage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(serializeWorkspace()));
-        return true;
-      } catch (err) {
-        return false;
+      if (storage && typeof storage.setItem === 'function') {
+        try {
+          storage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(serializeWorkspace()));
+          ok = true;
+        } catch (err) {
+          ok = false;
+        }
       }
+      if (typeof fetch === 'function' && typeof window !== 'undefined') {
+        saveWorkspaceToDatabase();
+      }
+      return ok;
     }
 
     function scheduleWorkspaceSave() {
       if (state.tabs.length === 0) return;
       syncActiveTabFromState();
       clearTimeout(workspaceSaveTimer);
+      clearTimeout(dbSaveTimer);
       workspaceSaveTimer = setTimeout(() => {
-        saveWorkspaceToStorage();
+        const storage = getBrowserStorage();
+        if (storage && typeof storage.setItem === 'function') {
+          try {
+            storage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(serializeWorkspace()));
+          } catch (err) {}
+        }
       }, 150);
+      dbSaveTimer = setTimeout(() => {
+        saveWorkspaceToDatabase();
+      }, 400);
     }
 
     function restoreWorkspaceData(data) {
