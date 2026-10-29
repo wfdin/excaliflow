@@ -25,8 +25,31 @@ Excaliflow supports persistence directly to a MySQL database using a high-perfor
    - **Password:** `12345678`
    - **Database:** `excaliflow`
 
-   Configuration can also be overridden via environment variables:
-   `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `PORT`.
+   All settings live in the `.env` file at the project root and are loaded
+   automatically on startup (no extra dependency required). If `.env` is
+   missing, copy the template:
+
+   ```sh
+   # Windows PowerShell
+   Copy-Item .env.example .env
+   # macOS / Linux
+   cp .env.example .env
+   ```
+
+   Then edit `.env`:
+
+   ```env
+   DB_HOST=localhost
+   DB_PORT=3306
+   DB_USER=root
+   DB_PASSWORD=12345678
+   DB_NAME=excaliflow
+   ```
+
+   Real environment variables always take precedence over `.env`, and
+   `ENV_FILE=/path/to/file` points the loader at a different env file. Other
+   supported keys: `PORT`, `STATIC_DIR`, `JWT_SECRET`, `CORS_ORIGINS`.
+   `.env` is git-ignored so local credentials never get committed.
 
 2. **Run Server & Database Migrations**:
    The Go backend automatically checks and executes pending database migrations on startup:

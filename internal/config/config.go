@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 )
 
@@ -26,6 +27,15 @@ func getEnv(key, defaultVal string) string {
 }
 
 func LoadConfig() *Config {
+	// Load the local .env file first (if present). Real environment variables
+	// always win, so .env only fills in the values that are not set yet.
+	envFile := getEnv("ENV_FILE", ".env")
+	if loaded, err := loadDotEnv(envFile); err != nil {
+		log.Printf("[CONFIG] Warning: failed to read %s: %v", envFile, err)
+	} else if loaded {
+		log.Printf("[CONFIG] Loaded environment variables from %s", envFile)
+	}
+
 	return &Config{
 		DBHost:         getEnv("DB_HOST", "localhost"),
 		DBPort:         getEnv("DB_PORT", "3306"),
