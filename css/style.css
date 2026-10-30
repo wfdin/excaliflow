@@ -1153,12 +1153,8 @@
       }
     }
 
-    /* ≤1024px — canvas stepping is still available via switcher + bottom tabs */
+    /* ≤1024px — canvases are switched via the switcher dropdown + bottom tabs */
     @media (max-width: 1024px) {
-      #prevCanvasBtn,
-      #nextCanvasBtn {
-        display: none;
-      }
       #activeCanvasLabel {
         max-width: 110px;
       }

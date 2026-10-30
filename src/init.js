@@ -494,8 +494,6 @@
       });
 
       document.getElementById('sidebarToggleBtn')?.addEventListener('click', toggleSidebar);
-      document.getElementById('prevCanvasBtn')?.addEventListener('click', () => stepCanvasTab(-1));
-      document.getElementById('nextCanvasBtn')?.addEventListener('click', () => stepCanvasTab(1));
       document.getElementById('addCanvasTabBtn')?.addEventListener('click', () => createCanvasTab());
       document.getElementById('forkCanvasTabBtn')?.addEventListener('click', () => duplicateCanvasTab());
       document.getElementById('bottomAddTabBtn')?.addEventListener('click', () => createCanvasTab());
