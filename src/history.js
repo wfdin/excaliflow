@@ -6,6 +6,7 @@
     }
 
     function pushHistory(customSnap = null) {
+      if (state.isReadOnly) return;
       const snap = customSnap || snapshotScene();
       const stack = state.history.undoStack;
       if (stack.length > 0 && stack[stack.length - 1] === snap) return;
@@ -24,6 +25,7 @@
     }
 
     function undo() {
+      if (state.isReadOnly) return;
       const currentSnap = snapshotScene();
       while (state.history.undoStack.length > 0 && state.history.undoStack[state.history.undoStack.length - 1] === currentSnap) {
         state.history.undoStack.pop();
@@ -42,6 +44,7 @@
     }
 
     function redo() {
+      if (state.isReadOnly) return;
       if (state.history.redoStack.length === 0) return;
       state.history.undoStack.push(snapshotScene());
       const next = state.history.redoStack.pop();

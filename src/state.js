@@ -7,6 +7,8 @@
       editingTabId: null,
       elements: [],
       selectedIds: new Set(),
+      isReadOnly: false,
+      sharedToken: null,
       hoveredId: null,
       hoveredPort: null,
       hoveredArrowHandle: null,

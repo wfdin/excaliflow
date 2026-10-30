@@ -61,6 +61,13 @@
 
     function setCanvasBackground(color) {
       state.canvasBg = color === '#000000' ? '#000000' : '#ffffff';
+      if (state.isReadOnly) {
+        if (typeof document === 'undefined') return;
+        document.body.classList.toggle('dark-canvas', state.canvasBg === '#000000');
+        document.getElementById('bgWhiteBtn')?.classList.toggle('active', state.canvasBg === '#ffffff');
+        document.getElementById('bgBlackBtn')?.classList.toggle('active', state.canvasBg === '#000000');
+        return;
+      }
       if (typeof document === 'undefined') return;
       document.body.classList.toggle('dark-canvas', state.canvasBg === '#000000');
       document.getElementById('bgWhiteBtn')?.classList.toggle('active', state.canvasBg === '#ffffff');
@@ -229,6 +236,7 @@
     }
 
     function applyStyleProperty(prop, value) {
+      if (state.isReadOnly) return;
       if (prop === 'fontFamily') value = normalizeFontFamily(value);
       state.defaults[prop] = value;
       if (prop === 'curveType' && (value === 'straight' || value === 'elbow')) {

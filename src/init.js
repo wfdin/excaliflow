@@ -80,6 +80,7 @@
       });
 
       interactiveCanvas.addEventListener('dblclick', e => {
+        if (state.isReadOnly) return;
         const pt = screenToWorld(e.clientX, e.clientY);
         const hit = hitTestElement(pt.x, pt.y);
         if (hit) {
@@ -146,6 +147,7 @@
         if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
         if (document.getElementById('authModalBackdrop')?.style.display !== 'none') return;
         if (document.getElementById('workspacesModalBackdrop')?.style.display !== 'none') return;
+        if (document.getElementById('shareModalBackdrop')?.style.display !== 'none') return;
         if (isConfirmModalOpen()) return;
 
         if (e.code === 'Space' && !state.editingId) {
@@ -164,6 +166,7 @@
       // Drag-and-drop .excaliflow / .excalidraw / .json scene files directly onto the window
       window.addEventListener('dragover', e => e.preventDefault?.());
       window.addEventListener('drop', e => {
+        if (state.isReadOnly) return;
         e.preventDefault?.();
         const file = e.dataTransfer?.files?.[0];
         if (!file) return;
@@ -476,6 +479,118 @@
         if (e.target === wsBackdrop) wsBackdrop.style.display = 'none';
       });
 
+      // Share public-link modal (owner side). Read-only viewers never see it.
+      const shareBackdrop = document.getElementById('shareModalBackdrop');
+      const shareLinkInput = document.getElementById('shareLinkInput');
+      const shareEnableBtn = document.getElementById('shareEnableBtn');
+      const shareCopyBtn = document.getElementById('shareCopyBtn');
+      const shareDisableBtn = document.getElementById('shareDisableBtn');
+
+      function setShareModalState(status) {
+        const enabled = Boolean(status && status.enabled && status.token);
+        if (shareLinkInput) {
+          shareLinkInput.value = enabled ? buildShareUrl(status.token) : '';
+          shareLinkInput.placeholder = enabled
+            ? ''
+            : (isSignedIn() ? 'Enable the link to generate a URL…' : 'Sign in to share this diagram…');
+        }
+        if (shareEnableBtn) shareEnableBtn.textContent = enabled ? 'Regenerate Link' : 'Enable Link';
+        if (shareCopyBtn) shareCopyBtn.disabled = !enabled;
+        if (shareDisableBtn) shareDisableBtn.disabled = !enabled;
+      }
+
+      async function refreshShareModal() {
+        if (!isSignedIn()) {
+          setShareModalState(null);
+          return;
+        }
+        if (shareLinkInput) shareLinkInput.placeholder = 'Loading…';
+        setShareModalState(await getWorkspaceShareStatus());
+      }
+
+      document.getElementById('btnShare')?.addEventListener('click', async () => {
+        if (state.isReadOnly) return;
+        closeAllDropdowns();
+        if (!isSignedIn()) {
+          openAuthModal('login');
+          showToast('Sign in to share this diagram');
+          return;
+        }
+        if (shareBackdrop) shareBackdrop.style.display = 'flex';
+        await refreshShareModal();
+        shareLinkInput?.focus?.();
+        shareLinkInput?.select?.();
+      });
+
+      shareEnableBtn?.addEventListener('click', async () => {
+        shareEnableBtn.disabled = true;
+        try {
+          const status = await getWorkspaceShareStatus();
+          // Re-generate on demand: revoke the old token first so Enable never
+          // silently reuses a URL the owner may have pasted somewhere.
+          if (status && status.enabled) await setWorkspaceShareEnabled(false);
+          setShareModalState(await setWorkspaceShareEnabled(true));
+          showToast('Public link enabled');
+        } finally {
+          shareEnableBtn.disabled = false;
+        }
+      });
+
+      shareCopyBtn?.addEventListener('click', async () => {
+        const url = shareLinkInput?.value || '';
+        if (!url) return;
+        try {
+          await navigator.clipboard.writeText(url);
+          showToast('Public link copied');
+        } catch (e) {
+          shareLinkInput?.focus?.();
+          shareLinkInput?.select?.();
+          try {
+            document.execCommand?.('copy');
+            showToast('Public link copied');
+          } catch (_e) {
+            showToast('Copy unavailable — select the link manually');
+          }
+        }
+      });
+
+      shareDisableBtn?.addEventListener('click', async () => {
+        shareDisableBtn.disabled = true;
+        try {
+          await setWorkspaceShareEnabled(false);
+          setShareModalState(null);
+          showToast('Public link disabled');
+        } finally {
+          shareDisableBtn.disabled = false;
+        }
+      });
+
+      document.getElementById('closeShareModalBtn')?.addEventListener('click', () => {
+        if (shareBackdrop) shareBackdrop.style.display = 'none';
+      });
+      shareBackdrop?.addEventListener('click', e => {
+        if (e.target === shareBackdrop) shareBackdrop.style.display = 'none';
+      });
+
+      document.getElementById('viewerExitBtn')?.addEventListener('click', () => {
+        exitSharedViewer();
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('share');
+          window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+        } catch (e) {}
+        if (!loadWorkspaceFromStorage()) {
+          loadTemplate('AI Agent Swarm');
+          state.history.undoStack = [];
+          ensureInitialTab('AI Agent Swarm');
+          saveWorkspaceToStorage();
+        }
+        setTool('select');
+        fitToScreen();
+        updateHeaderButtons();
+        showToast('Left the shared view');
+      });
+
       // Destructive-action confirmation dialog
       const confirmBackdrop = document.getElementById('confirmModalBackdrop');
       document.getElementById('confirmModalCancelBtn')?.addEventListener('click', () => closeConfirmModal(false));
@@ -534,6 +649,7 @@
       });
       document.getElementById('btnClearScene')?.addEventListener('click', () => {
         closeAllDropdowns();
+        if (state.isReadOnly) return;
         pushHistory();
         state.elements = [];
         state.selectedIds.clear();
@@ -657,16 +773,61 @@
       }
       updateHeaderButtons();
 
-      // Check and sync with MySQL database
-      if (typeof fetch === 'function' && typeof window !== 'undefined') {
-        fetchCurrentUser().then(() => {
-          return loadWorkspaceFromDatabase();
-        }).then(loadedFromDb => {
-          if (!loadedFromDb) {
-            saveWorkspaceToDatabase();
+      // Shared-link viewer: ?share=<token> loads an anonymous read-only copy
+      // and skips every signed-in sync path below. An invalid/disabled link
+      // redirects straight home instead of lingering on a stale canvas.
+      const sharedToken = getShareTokenFromUrl();
+      if (sharedToken) {
+        try { state.history.undoStack = []; state.history.redoStack = []; } catch (e) {}
+        setTool('select');
+        updateHeaderButtons();
+        const backHome = (message) => {
+          try {
+            if (typeof window !== 'undefined' && window.sessionStorage) {
+              window.sessionStorage.setItem('excaliflow_notice', message);
+            }
+          } catch (e) {}
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('share');
+            let hash = url.hash || '';
+            if (hash.includes('share=')) hash = '';
+            const clean = `${url.pathname}${url.search}${hash}` || '/';
+            window.location.replace(clean);
+          } catch (e) {
+            window.location.replace('/');
           }
-          updateHeaderButtons();
-        }).catch(() => {});
+        };
+        enterSharedViewer(sharedToken).then(ok => {
+          if (ok) {
+            setTool('select');
+            fitToScreen();
+            updateHeaderButtons();
+          } else {
+            backHome('Shared link is invalid or disabled');
+          }
+        }).catch(() => {
+          backHome('Could not load the shared diagram');
+        });
+      } else {
+        try {
+          const notice = window.sessionStorage?.getItem('excaliflow_notice');
+          if (notice) {
+            window.sessionStorage.removeItem('excaliflow_notice');
+            setTimeout(() => showToast(notice), 350);
+          }
+        } catch (e) {}
+        // Check and sync with MySQL database
+        if (typeof fetch === 'function' && typeof window !== 'undefined') {
+          fetchCurrentUser().then(() => {
+            return loadWorkspaceFromDatabase();
+          }).then(loadedFromDb => {
+            if (!loadedFromDb) {
+              saveWorkspaceToDatabase();
+            }
+            updateHeaderButtons();
+          }).catch(() => {});
+        }
       }
 
       let lastFrameTime = performance.now() / 1000;
@@ -772,6 +933,14 @@
         switchUserWorkspace,
         createNewUserWorkspace,
         deleteUserWorkspace,
+        getCurrentWorkspaceId,
+        getWorkspaceShareStatus,
+        setWorkspaceShareEnabled,
+        buildShareUrl,
+        getShareTokenFromUrl,
+        loadSharedWorkspaceByToken,
+        enterSharedViewer,
+        exitSharedViewer,
         serializeWorkspace,
         restoreWorkspaceData,
         apiUrl,

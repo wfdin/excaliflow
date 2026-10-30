@@ -117,6 +117,10 @@ func (s *Server) Routes() http.Handler {
 	})
 	mux.HandleFunc("/api/workspaces", s.handler.ListWorkspaces)
 
+	// Public read-only share links (anonymous)
+	mux.HandleFunc("/api/workspace/share", s.handler.WorkspaceShare)
+	mux.HandleFunc("/api/public/workspace/", s.handler.PublicWorkspace)
+
 	// Static files handler with security check
 	staticAbs, err := filepath.Abs(s.cfg.StaticDir)
 	if err != nil {

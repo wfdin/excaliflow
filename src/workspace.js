@@ -92,6 +92,7 @@
 
     async function saveWorkspaceToDatabase(wsId = null) {
       if (typeof fetch !== 'function' || typeof window === 'undefined') return false;
+      if (state.isReadOnly) return false;
       if (state.tabs.length === 0) return false;
       if (!isSignedIn()) return false;
       // Serialize saves: the debounced auto-save and the unload flush could
@@ -136,6 +137,7 @@
 
     async function loadWorkspaceFromDatabase(wsId = null) {
       if (typeof fetch !== 'function' || typeof window === 'undefined') return false;
+      if (state.isReadOnly) return false;
       if (!isSignedIn()) return false;
       const targetId = wsId || currentWorkspaceId || 'default';
       try {
@@ -193,6 +195,7 @@
 
     async function loginUser(identifier, password) {
       if (typeof fetch !== 'function') return false;
+      if (state.isReadOnly) exitSharedViewer();
       const res = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -214,6 +217,7 @@
 
     async function registerUser(username, email, password, fullName) {
       if (typeof fetch !== 'function') return false;
+      if (state.isReadOnly) exitSharedViewer();
       const res = await fetch(apiUrl('/api/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -234,6 +238,7 @@
     }
 
     function logoutUser() {
+      if (state.isReadOnly) exitSharedViewer();
       setAuthToken('');
       currentUser = null;
       currentWorkspaceId = 'default';
@@ -257,7 +262,7 @@
     }
 
     async function switchUserWorkspace(wsId) {
-      if (!wsId) return false;
+      if (!wsId || state.isReadOnly) return false;
       const ok = await loadWorkspaceFromDatabase(wsId);
       if (ok) {
         currentWorkspaceId = wsId;
@@ -268,6 +273,7 @@
     }
 
     async function createNewUserWorkspace(name) {
+      if (state.isReadOnly) return null;
       const cleanName = (name || '').trim() || 'Untitled Project';
       const newWsId = 'ws_' + Math.random().toString(36).slice(2, 10);
       currentWorkspaceId = newWsId;
@@ -282,7 +288,7 @@
     }
 
     async function deleteUserWorkspace(wsId) {
-      if (!wsId || typeof fetch !== 'function') return false;
+      if (!wsId || state.isReadOnly || typeof fetch !== 'function') return false;
       try {
         const res = await fetch(apiUrl(`/api/workspace?id=${encodeURIComponent(wsId)}`), {
           method: 'DELETE',
@@ -299,6 +305,125 @@
         }
       } catch (e) {}
       return false;
+    }
+
+    function getCurrentWorkspaceId() {
+      return currentWorkspaceId || 'default';
+    }
+
+    async function getWorkspaceShareStatus(wsId = null) {
+      if (typeof fetch !== 'function' || typeof window === 'undefined') return null;
+      if (!isSignedIn()) return null;
+      const targetId = wsId || currentWorkspaceId || 'default';
+      if (!targetId) return null;
+      try {
+        const res = await fetch(apiUrl(`/api/workspace/share?id=${encodeURIComponent(targetId)}`), {
+          headers: getAuthHeaders()
+        });
+        if (!res.ok) return null;
+        return await res.json().catch(() => null);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function setWorkspaceShareEnabled(enabled, wsId = null) {
+      if (typeof fetch !== 'function' || typeof window === 'undefined') return null;
+      if (!isSignedIn()) return null;
+      const targetId = wsId || currentWorkspaceId || 'default';
+      if (!targetId) return null;
+      try {
+        const res = await fetch(apiUrl(`/api/workspace/share?id=${encodeURIComponent(targetId)}`), {
+          method: enabled ? 'POST' : 'DELETE',
+          headers: getAuthHeaders()
+        });
+        if (!res.ok) return null;
+        return await res.json().catch(() => null);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function buildShareUrl(token) {
+      if (!token) return '';
+      try {
+        if (typeof window !== 'undefined' && window.location) {
+          const loc = window.location;
+          const basePath = String(loc.pathname || '/').split('?')[0].split('#')[0] || '/';
+          return `${loc.origin}${basePath}?share=${encodeURIComponent(token)}`;
+        }
+      } catch (e) {}
+      return `?share=${encodeURIComponent(token)}`;
+    }
+
+    function getShareTokenFromUrl() {
+      try {
+        if (typeof window === 'undefined' || !window.location) return '';
+        const search = String(window.location.search || '');
+        const hash = String(window.location.hash || '');
+        const fromSearch = search.match(/[?&]share=([^&#]+)/);
+        if (fromSearch && fromSearch[1]) return decodeURIComponent(fromSearch[1]).trim();
+        const fromHash = hash.match(/share=([^&#]+)/);
+        if (fromHash && fromHash[1]) return decodeURIComponent(fromHash[1]).trim();
+      } catch (e) {}
+      return '';
+    }
+
+    async function loadSharedWorkspaceByToken(token) {
+      const clean = String(token || '').trim();
+      if (!clean || typeof fetch !== 'function' || typeof window === 'undefined') return null;
+      try {
+        const res = await fetch(apiUrl(`/api/public/workspace/${encodeURIComponent(clean)}`));
+        if (!res.ok) return null;
+        return await res.json().catch(() => null);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function exitSharedViewer() {
+      state.isReadOnly = false;
+      state.sharedToken = null;
+      if (typeof document !== 'undefined') {
+        try {
+          document.body?.classList?.remove('is-viewer');
+          document.title = 'Excaliflow — Hand-Drawn Diagramming & Live Causal Flow';
+        } catch (e) {}
+      }
+    }
+
+    async function enterSharedViewer(token) {
+      const clean = String(token || '').trim();
+      if (!clean) return false;
+      // Flag first: restoreWorkspaceData fans out into syncUIWithSelection,
+      // which schedules debounced saves — they must observe read-only mode.
+      state.isReadOnly = true;
+      state.sharedToken = clean;
+      const payload = await loadSharedWorkspaceByToken(clean);
+      if (!payload || !payload.workspace) {
+        state.isReadOnly = false;
+        state.sharedToken = null;
+        return false;
+      }
+      const restored = restoreWorkspaceData(payload.workspace);
+      if (!restored) {
+        state.isReadOnly = false;
+        state.sharedToken = null;
+        return false;
+      }
+      state.selectedIds.clear();
+      state.editingId = null;
+      state.editingTabId = null;
+      if (typeof document !== 'undefined') {
+        try {
+          document.body?.classList?.add('is-viewer');
+          const name = String(payload.name || 'Shared diagram');
+          document.title = `${name} — view-only · Excaliflow`;
+        } catch (e) {}
+      }
+      fitToScreen();
+      showToast('Viewing shared diagram (read-only)');
+      return true;
     }
 
     function getBrowserStorage() {
@@ -432,6 +557,7 @@
     // short gate keeps it to one flush. localStorage is written synchronously;
     // the MySQL save only happens for signed-in users (see saveWorkspaceToStorage).
     function flushWorkspaceNow() {
+      if (state.isReadOnly) return false;
       if (state.tabs.length === 0) return false;
       const now = Date.now();
       if (now - lastUnloadFlushAt < 1000) return false;
@@ -440,6 +566,7 @@
     }
 
     function saveWorkspaceToStorage() {
+      if (state.isReadOnly) return false;
       if (state.tabs.length === 0) return false;
       let ok = false;
       const storage = getBrowserStorage();
@@ -458,6 +585,7 @@
     }
 
     function scheduleWorkspaceSave() {
+      if (state.isReadOnly) return;
       if (state.tabs.length === 0) return;
       syncActiveTabFromState();
       clearTimeout(workspaceSaveTimer);
@@ -619,6 +747,7 @@
           });
           pill.addEventListener?.('dblclick', e => {
             e.stopPropagation?.();
+            if (state.isReadOnly) return;
             state.editingTabId = tab.id;
             renderCanvasTabs(true);
           });
@@ -694,6 +823,7 @@
     }
 
     function createCanvasTab(opts = {}) {
+      if (state.isReadOnly) return null;
       if (state.editingId) commitInlineEditor();
       ensureInitialTab();
       syncActiveTabFromState();
@@ -728,6 +858,7 @@
     }
 
     function duplicateCanvasTab(tabId = state.activeTabId) {
+      if (state.isReadOnly) return null;
       if (state.editingId) commitInlineEditor();
       ensureInitialTab();
       syncActiveTabFromState();
@@ -799,6 +930,7 @@
     }
 
     function renameCanvasTab(tabId, newName) {
+      if (state.isReadOnly) return false;
       ensureInitialTab();
       const tab = state.tabs.find(t => t.id === tabId);
       if (!tab) return false;
@@ -816,6 +948,7 @@
     // click on the little × must not delete work. closeCanvasTab() stays the
     // synchronous primitive used by tests and internal callers.
     async function requestCloseCanvasTab(tabId) {
+      if (state.isReadOnly) return false;
       ensureInitialTab();
       const tab = state.tabs.find(t => t.id === tabId);
       if (!tab) return false;
@@ -840,6 +973,7 @@
     }
 
     function closeCanvasTab(tabId) {
+      if (state.isReadOnly) return false;
       if (state.editingId) commitInlineEditor();
       ensureInitialTab();
       const idx = state.tabs.findIndex(t => t.id === tabId);
@@ -876,6 +1010,7 @@
     }
 
     function importExcalidrawJson(jsonString) {
+      if (state.isReadOnly) return false;
       closeAllDropdowns();
       try {
         const data = JSON.parse(jsonString);

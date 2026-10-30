@@ -2,6 +2,7 @@
      * 10. Quick-Add Chaining, Tab Chaining & Starter Templates
      * ------------------------------------------------------------------------- */
     function chainNodeFrom(sourceNode, dir = 'right', type = null, openEditor = false) {
+      if (state.isReadOnly) return null;
       pushHistory();
       const targetType = type || (sourceNode.type === 'text' ? 'rectangle' : sourceNode.type);
       const stepX = 220;
@@ -53,6 +54,7 @@
     }
 
     function quickAddShape(type = 'rectangle') {
+      if (state.isReadOnly) return null;
       const selectedNodes = Array.from(state.selectedIds)
         .map(id => state.elements.find(e => e.id === id))
         .filter(el => el && isNodeElement(el));
@@ -89,6 +91,7 @@
     }
 
     function loadTemplate(templateName) {
+      if (state.isReadOnly) return;
       pushHistory();
       state.elements = [];
       state.selectedIds.clear();

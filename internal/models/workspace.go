@@ -51,3 +51,19 @@ type WorkspaceSummary struct {
 	TabCount    int       `json:"tabCount"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
+
+// WorkspaceShare is the public-link state of a workspace. Token is only set
+// while the link is enabled.
+type WorkspaceShare struct {
+	Enabled bool   `json:"enabled"`
+	Token   string `json:"token,omitempty"`
+}
+
+// SharedWorkspace is the anonymous, read-only payload served for a public
+// share token. It intentionally contains no owner information.
+type SharedWorkspace struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Data      json.RawMessage `json:"workspace"`
+	UpdatedAt time.Time       `json:"updatedAt"`
+}

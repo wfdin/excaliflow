@@ -1,11 +1,15 @@
 package repository
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/go-sql-driver/mysql"
 
 	"excaliflow/internal/models"
 )
@@ -344,4 +348,140 @@ func (r *WorkspaceRepository) DeleteWorkspace(userID *int64, id string) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// GetWorkspaceShare returns the public-link state of a workspace owned by
+// userID, or nil when the workspace does not belong to that user.
+func (r *WorkspaceRepository) GetWorkspaceShare(userID int64, id string) (*models.WorkspaceShare, error) {
+	var (
+		token   sql.NullString
+		enabled bool
+	)
+
+	err := r.db.QueryRow(
+		"SELECT share_token, share_enabled FROM workspaces WHERE id = ? AND user_id = ?",
+		id, userID,
+	).Scan(&token, &enabled)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query workspace share: %w", err)
+	}
+
+	share := &models.WorkspaceShare{Enabled: enabled && token.Valid && token.String != ""}
+	if share.Enabled {
+		share.Token = token.String
+	}
+	return share, nil
+}
+
+// EnableWorkspaceShare turns on the public link, generating a fresh token when
+// the workspace does not have one yet. Existing tokens are reused so the link
+// never changes after a temporary disable unless it is revoked.
+func (r *WorkspaceRepository) EnableWorkspaceShare(userID int64, id string) (*models.WorkspaceShare, error) {
+	share, err := r.GetWorkspaceShare(userID, id)
+	if err != nil {
+		return nil, err
+	}
+	if share == nil {
+		return nil, sql.ErrNoRows
+	}
+	if share.Enabled {
+		return share, nil
+	}
+
+	token := share.Token
+	if token == "" {
+		for attempt := 0; attempt < 3 && token == ""; attempt++ {
+			candidate, err := newShareToken()
+			if err != nil {
+				return nil, err
+			}
+			_, err = r.db.Exec(
+				"UPDATE workspaces SET share_token = ?, share_enabled = 1, shared_at = NOW() WHERE id = ? AND user_id = ?",
+				candidate, id, userID,
+			)
+			if err == nil {
+				token = candidate
+				break
+			}
+			var mysqlErr *mysql.MySQLError
+			if !errors.As(err, &mysqlErr) || mysqlErr.Number != 1062 {
+				return nil, fmt.Errorf("failed to enable workspace share: %w", err)
+			}
+		}
+		if token == "" {
+			return nil, errors.New("failed to generate a unique share token")
+		}
+	} else {
+		if _, err := r.db.Exec(
+			"UPDATE workspaces SET share_enabled = 1, shared_at = NOW() WHERE id = ? AND user_id = ?",
+			id, userID,
+		); err != nil {
+			return nil, fmt.Errorf("failed to enable workspace share: %w", err)
+		}
+	}
+
+	return &models.WorkspaceShare{Enabled: true, Token: token}, nil
+}
+
+// DisableWorkspaceShare revokes the public link by dropping the token, so
+// re-enabling sharing later produces a brand new URL.
+func (r *WorkspaceRepository) DisableWorkspaceShare(userID int64, id string) error {
+	share, err := r.GetWorkspaceShare(userID, id)
+	if err != nil {
+		return err
+	}
+	if share == nil {
+		return sql.ErrNoRows
+	}
+
+	if _, err := r.db.Exec(
+		"UPDATE workspaces SET share_token = NULL, share_enabled = 0, shared_at = NULL WHERE id = ? AND user_id = ?",
+		id, userID,
+	); err != nil {
+		return fmt.Errorf("failed to disable workspace share: %w", err)
+	}
+	return nil
+}
+
+// GetSharedWorkspace resolves a public token to its workspace payload. Only
+// enabled links are returned; revoked or unknown tokens yield nil.
+func (r *WorkspaceRepository) GetSharedWorkspace(token string) (*models.SharedWorkspace, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil, nil
+	}
+
+	var (
+		rec  models.SharedWorkspace
+		data []byte
+	)
+
+	err := r.db.QueryRow(
+		"SELECT id, name, data, updated_at FROM workspaces WHERE share_token = ? AND share_enabled = 1 LIMIT 1",
+		token,
+	).Scan(&rec.ID, &rec.Name, &data, &rec.UpdatedAt)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query shared workspace: %w", err)
+	}
+	if len(data) == 0 {
+		data = []byte("{}")
+	}
+	rec.Data = json.RawMessage(data)
+	return &rec, nil
+}
+
+func newShareToken() (string, error) {
+	buf := make([]byte, 18)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("failed to generate share token: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
 }

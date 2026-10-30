@@ -17,6 +17,9 @@ var migration000002Up string
 //go:embed migrations/000003_canvas_tabs_composite_pk.up.sql
 var migration000003Up string
 
+//go:embed migrations/000004_workspace_share.up.sql
+var migration000004Up string
+
 type migrationItem struct {
 	version int64
 	name    string
@@ -43,6 +46,7 @@ func RunMigrations(db *sql.DB) error {
 		{version: 1, name: "000001_create_workspaces_tables", sqlText: migration000001Up},
 		{version: 2, name: "000002_create_users_table", sqlText: migration000002Up},
 		{version: 3, name: "000003_canvas_tabs_composite_pk", sqlText: migration000003Up},
+		{version: 4, name: "000004_workspace_share", sqlText: migration000004Up},
 	}
 
 	for _, m := range migrations {

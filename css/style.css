@@ -1125,6 +1125,39 @@
       background: rgba(239, 68, 68, 0.1);
     }
 
+    /* Read-only shared-link viewer mode */
+    #viewerBanner {
+      position: fixed;
+      top: calc(var(--header-h) + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 26;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 5px 8px 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      pointer-events: auto;
+    }
+    body.is-viewer #viewerBanner {
+      display: inline-flex;
+    }
+    body.is-viewer #leftSidebar,
+    body.is-viewer #bottomToolDock,
+    body.is-viewer #toolsMenuWrap,
+    body.is-viewer #quickHud,
+    body.is-viewer #bottomLeftBar,
+    body.is-viewer #btnShare,
+    body.is-viewer #btnClearScene,
+    body.is-viewer #btnLoadJson,
+    body.is-viewer #btnNewProject,
+    body.is-viewer #templatesMenuBtn,
+    body.is-viewer .tab-action-btn,
+    body.is-viewer .canvas-tab-pill .tab-close {
+      display: none !important;
+    }
+
     /* =========================================================================
      * Responsive Top Bar
      * The header wraps instead of overflowing, so these rules only reclaim

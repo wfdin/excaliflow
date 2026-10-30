@@ -2,6 +2,7 @@
      * 13. Inline Text Editor & Keyboard Shortcuts
      * ------------------------------------------------------------------------- */
     function startInlineEditing(el) {
+      if (state.isReadOnly) return;
       if (!el || el.type === 'arrow' || typeof document === 'undefined') return;
       state.editingId = el.id;
       state.editingPreSnap = snapshotScene();
@@ -47,6 +48,7 @@
     }
 
     function setTool(tool) {
+      if (state.isReadOnly && tool !== 'select' && tool !== 'hand' && tool !== 'laser') return;
       state.activeTool = tool;
       if (typeof document === 'undefined') return;
       document.querySelectorAll('#bottomToolDock [data-tool]').forEach(btn => {
@@ -70,6 +72,7 @@
       if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
       if (document.getElementById('authModalBackdrop')?.style.display !== 'none') return;
       if (document.getElementById('workspacesModalBackdrop')?.style.display !== 'none') return;
+      if (document.getElementById('shareModalBackdrop')?.style.display !== 'none') return;
       if (isConfirmModalOpen()) return;
 
       if (state.editingTabId) return;
@@ -131,6 +134,18 @@
           createCanvasTab();
           return;
         }
+      }
+
+      if (state.isReadOnly) {
+        if (e.key === 'Escape') {
+          e.preventDefault?.();
+          closeAllDropdowns();
+          if (state.selectedIds.size > 0) {
+            state.selectedIds.clear();
+            syncUIWithSelection();
+          }
+        }
+        return;
       }
 
       if (meta && key === '\\') {

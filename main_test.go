@@ -133,6 +133,7 @@ func TestWorkspaceEndpointsRequireAuth(t *testing.T) {
 		{"save", http.MethodPost, "/api/workspace?id=default", `{"tabs":[]}`},
 		{"list", http.MethodGet, "/api/workspaces", ""},
 		{"delete", http.MethodDelete, "/api/workspace?id=default", ""},
+		{"share", http.MethodGet, "/api/workspace/share?id=default", ""},
 	}
 
 	for _, tc := range cases {
@@ -296,5 +297,126 @@ func TestWorkspaceTabIDReuse(t *testing.T) {
 	}`)
 	if duplicate.Code != http.StatusOK {
 		t.Fatalf("Save with duplicate tab ids failed with %d: %s", duplicate.Code, duplicate.Body.String())
+	}
+}
+
+// TestWorkspacePublicShare covers enabling, resolving and revoking a public
+// read-only share link, plus ownership isolation.
+func TestWorkspacePublicShare(t *testing.T) {
+	_, _, _, router := setupTestApp(t)
+	uniqueSuffix := time.Now().UnixNano()
+
+	register := func(name string) models.AuthResponse {
+		body := fmt.Sprintf(`{"username":"%s_%d","email":"%s_%d@test.com","password":"password123","fullName":"%s"}`, name, uniqueSuffix, name, uniqueSuffix, name)
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewBufferString(body))
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("Failed to register %s: %s", name, rec.Body.String())
+		}
+		var auth models.AuthResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &auth); err != nil {
+			t.Fatalf("Failed to parse register response: %v", err)
+		}
+		return auth
+	}
+
+	owner := register("share_owner")
+	other := register("share_other")
+	wsID := fmt.Sprintf("ws_shared_%d", uniqueSuffix)
+
+	saveReq := httptest.NewRequest(http.MethodPost, "/api/workspace?id="+wsID, bytes.NewBufferString(`{
+		"type": "excaliflow", "version": 2, "source": "Excaliflow",
+		"activeTabId": "tab_public",
+		"tabs": [{"id":"tab_public","name":"Public Architecture","elements":[{"id":"n1","type":"rectangle","text":"Public"}]}]
+	}`))
+	saveReq.Header.Set("Authorization", "Bearer "+owner.Token)
+	saveRec := httptest.NewRecorder()
+	router.ServeHTTP(saveRec, saveReq)
+	if saveRec.Code != http.StatusOK {
+		t.Fatalf("Failed to save workspace: %s", saveRec.Body.String())
+	}
+
+	shareCall := func(method, userToken, id string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/api/workspace/share?id="+id, nil)
+		if userToken != "" {
+			req.Header.Set("Authorization", "Bearer "+userToken)
+		}
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Disabled by default.
+	status := shareCall(http.MethodGet, owner.Token, wsID)
+	if status.Code != http.StatusOK {
+		t.Fatalf("Share status failed: %s", status.Body.String())
+	}
+	var statusRes struct {
+		Enabled bool   `json:"enabled"`
+		Token   string `json:"token"`
+	}
+	json.Unmarshal(status.Body.Bytes(), &statusRes)
+	if statusRes.Enabled || statusRes.Token != "" {
+		t.Fatalf("New workspace must not be shared: %+v", statusRes)
+	}
+
+	// Another user cannot enable sharing for someone else's workspace.
+	if res := shareCall(http.MethodPost, other.Token, wsID); res.Code != http.StatusNotFound {
+		t.Fatalf("Expected 404 when sharing a foreign workspace, got %d: %s", res.Code, res.Body.String())
+	}
+
+	// Enable the public link.
+	enabled := shareCall(http.MethodPost, owner.Token, wsID)
+	if enabled.Code != http.StatusOK {
+		t.Fatalf("Failed to enable share: %s", enabled.Body.String())
+	}
+	var enabledRes struct {
+		Enabled bool   `json:"enabled"`
+		Token   string `json:"token"`
+	}
+	json.Unmarshal(enabled.Body.Bytes(), &enabledRes)
+	if !enabledRes.Enabled || enabledRes.Token == "" {
+		t.Fatalf("Expected an enabled link with token, got %+v", enabledRes)
+	}
+
+	// Anyone can read the shared payload without a token.
+	publicReq := httptest.NewRequest(http.MethodGet, "/api/public/workspace/"+enabledRes.Token, nil)
+	publicRec := httptest.NewRecorder()
+	router.ServeHTTP(publicRec, publicReq)
+	if publicRec.Code != http.StatusOK {
+		t.Fatalf("Public share lookup failed with %d: %s", publicRec.Code, publicRec.Body.String())
+	}
+	var publicRes struct {
+		Name      string          `json:"name"`
+		Workspace json.RawMessage `json:"workspace"`
+	}
+	if err := json.Unmarshal(publicRec.Body.Bytes(), &publicRes); err != nil {
+		t.Fatalf("Failed to decode public payload: %v", err)
+	}
+	if !bytes.Contains(publicRes.Workspace, []byte("tab_public")) || !bytes.Contains(publicRes.Workspace, []byte("Public Architecture")) {
+		t.Fatalf("Public payload is missing diagram data: %s", publicRes.Workspace)
+	}
+	if bytes.Contains(publicRec.Body.Bytes(), []byte(owner.User.Email)) {
+		t.Fatalf("Public payload must not leak the owner email: %s", publicRec.Body.String())
+	}
+
+	// Unknown tokens are rejected.
+	missingReq := httptest.NewRequest(http.MethodGet, "/api/public/workspace/does-not-exist", nil)
+	missingRec := httptest.NewRecorder()
+	router.ServeHTTP(missingRec, missingReq)
+	if missingRec.Code != http.StatusNotFound {
+		t.Fatalf("Expected 404 for unknown share token, got %d", missingRec.Code)
+	}
+
+	// Revoking kills the link immediately.
+	if res := shareCall(http.MethodDelete, owner.Token, wsID); res.Code != http.StatusOK {
+		t.Fatalf("Failed to disable share: %s", res.Body.String())
+	}
+	revokedReq := httptest.NewRequest(http.MethodGet, "/api/public/workspace/"+enabledRes.Token, nil)
+	revokedRec := httptest.NewRecorder()
+	router.ServeHTTP(revokedRec, revokedReq)
+	if revokedRec.Code != http.StatusNotFound {
+		t.Fatalf("Revoked share link must return 404, got %d", revokedRec.Code)
 	}
 }

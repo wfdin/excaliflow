@@ -40,6 +40,7 @@
     }
 
     function cloneElementsWithBindings(sourceElements, offsetX = 0, offsetY = 0) {
+      if (state.isReadOnly) return [];
       if (!Array.isArray(sourceElements) || sourceElements.length === 0) return [];
       const idMap = new Map();
       const clones = [];
@@ -76,6 +77,34 @@
     function pointerDownWorld(wx, wy, opts = {}) {
       if (state.editingId) commitInlineEditor();
       closeAllDropdowns();
+
+      // Shared-link viewer: pan/zoom and marquee-select only. Every creation
+      // or mutation path below returns early here.
+      if (state.isReadOnly) {
+        const tool = state.activeTool;
+        if (tool === 'hand' || state.isSpacePanning) {
+          state.drag = {
+            mode: 'pan',
+            startScreenX: opts.screenX ?? wx * state.zoom,
+            startScreenY: opts.screenY ?? wy * state.zoom,
+            origScrollX: state.scrollX,
+            origScrollY: state.scrollY
+          };
+          updateInteractiveCursor();
+          return;
+        }
+        if (tool !== 'select') return;
+        state.selectedIds.clear();
+        syncUIWithSelection();
+        state.drag = {
+          mode: 'marquee',
+          startX: wx,
+          startY: wy,
+          currX: wx,
+          currY: wy
+        };
+        return;
+      }
 
       const shiftKey = Boolean(opts.shiftKey);
       const altKey = Boolean(opts.altKey);
@@ -691,6 +720,7 @@
     }
 
     function deleteElementById(id) {
+      if (state.isReadOnly) return;
       state.elements = state.elements.filter(el => el.id !== id);
       for (const el of state.elements) {
         if (el.type === 'arrow') {
@@ -704,6 +734,7 @@
     }
 
     function deleteSelection() {
+      if (state.isReadOnly) return;
       if (state.selectedIds.size === 0) return;
       pushHistory();
       const ids = Array.from(state.selectedIds);
@@ -711,6 +742,7 @@
     }
 
     function duplicateSelection() {
+      if (state.isReadOnly) return [];
       const selected = state.elements.filter(el => state.selectedIds.has(el.id));
       if (selected.length === 0) return [];
       pushHistory();

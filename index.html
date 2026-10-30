@@ -133,6 +133,7 @@
       <button id="bgWhiteBtn" class="ui-btn active" title="Pure White Canvas (#ffffff)">☀</button>
       <button id="bgBlackBtn" class="ui-btn" title="Pitch-Black Neon Canvas (#000000)">☾</button>
       <div class="v-divider"></div>
+      <button id="btnShare" class="ui-btn" title="Share a read-only public link">Share</button>
       <button id="btnSavePng" class="ui-btn primary" title="Export Cropped 2x Retina PNG">Export PNG</button>
       <div class="dropdown-wrap">
         <button id="exportMenuBtn" class="ui-btn" title="More Export &amp; Scene Actions">⋯</button>
@@ -384,6 +385,32 @@
         <div id="workspacesListContainer" class="workspaces-grid">
           <!-- Dynamically populated -->
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Read-only shared-link viewer banner -->
+  <div id="viewerBanner" class="glass-panel">
+    <span class="viewer-banner-text">Read-only shared view</span>
+    <button id="viewerExitBtn" class="ui-btn" title="Leave the shared view and open your own diagrams">Exit</button>
+  </div>
+
+  <!-- Share Public Link Modal -->
+  <div id="shareModalBackdrop" class="modal-backdrop" style="display:none">
+    <div class="modal-card glass-panel" role="dialog" aria-labelledby="shareModalTitle" aria-describedby="shareModalDesc">
+      <div class="modal-header">
+        <h3 id="shareModalTitle">Share Diagram</h3>
+        <button id="closeShareModalBtn" class="modal-close-btn" title="Close">✕</button>
+      </div>
+      <p id="shareModalDesc" class="confirm-modal-message">Anyone with the link can view a read-only copy of the active diagram project.</p>
+      <div class="form-group" style="margin-top:12px">
+        <label for="shareLinkInput">Public link</label>
+        <input type="text" id="shareLinkInput" class="form-input" readonly placeholder="Enable the link to generate a URL…" style="font-family:var(--font-mono);font-size:11px" />
+      </div>
+      <div class="modal-actions" style="justify-content:flex-start;flex-wrap:wrap;gap:8px">
+        <button id="shareEnableBtn" class="ui-btn primary">Enable Link</button>
+        <button id="shareCopyBtn" class="ui-btn">Copy Link</button>
+        <button id="shareDisableBtn" class="ui-btn danger">Disable</button>
       </div>
     </div>
   </div>

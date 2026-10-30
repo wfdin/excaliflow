@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -183,6 +185,146 @@ func (h *WorkspaceHandler) SaveWorkspace(w http.ResponseWriter, r *http.Request)
 		"tabCount":    len(payload.Tabs),
 		"message":     "Workspace saved successfully to MySQL database",
 	})
+}
+
+// WorkspaceShare handles GET/POST/DELETE /api/workspace/share?id=...
+// It manages the public read-only link of a workspace owned by the caller.
+func (h *WorkspaceHandler) WorkspaceShare(w http.ResponseWriter, r *http.Request) {
+	userID := h.requireUser(w, r)
+	if userID == nil {
+		return
+	}
+
+	workspaceID := strings.TrimSpace(r.URL.Query().Get("id"))
+	if workspaceID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "Workspace ID is required",
+		})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		share, err := h.repo.GetWorkspaceShare(*userID, workspaceID)
+		if err != nil {
+			log.Printf("[API ERROR] GetWorkspaceShare failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+				"success": false,
+				"error":   "Failed to load share settings",
+			})
+			return
+		}
+		if share == nil {
+			writeJSON(w, http.StatusNotFound, map[string]interface{}{
+				"success": false,
+				"error":   "Workspace not found",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"enabled": share.Enabled,
+			"token":   share.Token,
+		})
+
+	case http.MethodPost, http.MethodPut:
+		share, err := h.repo.EnableWorkspaceShare(*userID, workspaceID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]interface{}{
+					"success": false,
+					"error":   "Workspace not found",
+				})
+				return
+			}
+			log.Printf("[API ERROR] EnableWorkspaceShare failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+				"success": false,
+				"error":   "Failed to create public link",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"enabled": share.Enabled,
+			"token":   share.Token,
+		})
+
+	case http.MethodDelete:
+		if err := h.repo.DisableWorkspaceShare(*userID, workspaceID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]interface{}{
+					"success": false,
+					"error":   "Workspace not found",
+				})
+				return
+			}
+			log.Printf("[API ERROR] DisableWorkspaceShare failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+				"success": false,
+				"error":   "Failed to disable public link",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"enabled": false,
+		})
+
+	default:
+		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// PublicWorkspace handles GET /api/public/workspace/{token}. It is the only
+// anonymous workspace endpoint and exposes just the diagram payload.
+func (h *WorkspaceHandler) PublicWorkspace(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	token := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/public/workspace/"), "/")
+	if token == "" {
+		writeJSON(w, http.StatusNotFound, map[string]interface{}{
+			"success": false,
+			"error":   "Shared diagram not found",
+		})
+		return
+	}
+
+	record, err := h.repo.GetSharedWorkspace(token)
+	if err != nil {
+		log.Printf("[API ERROR] GetSharedWorkspace failed: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"error":   "Failed to load shared diagram",
+		})
+		return
+	}
+	if record == nil {
+		writeJSON(w, http.StatusNotFound, map[string]interface{}{
+			"success": false,
+			"error":   "Shared diagram not found or link disabled",
+		})
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success":   true,
+		"id":        record.ID,
+		"name":      record.Name,
+		"updatedAt": record.UpdatedAt,
+		"workspace": record.Data,
+	})
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(payload)
 }
 
 // ListWorkspaces handles GET /api/workspaces
