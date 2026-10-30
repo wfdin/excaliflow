@@ -6,6 +6,59 @@
       document.querySelectorAll('.dropdown-menu.open').forEach(m => m.classList.remove('open'));
     }
 
+    /* -------------------------------------------------------------------------
+     * Confirmation dialog for destructive actions.
+     * openConfirmModal() resolves true only when the user explicitly confirms,
+     * so data is never deleted from a single stray click.
+     * ------------------------------------------------------------------------- */
+    let confirmModalResolve = null;
+
+    function isConfirmModalOpen() {
+      if (typeof document === 'undefined') return false;
+      const backdrop = document.getElementById('confirmModalBackdrop');
+      return Boolean(backdrop) && backdrop.style.display !== 'none';
+    }
+
+    function closeConfirmModal(confirmed = false) {
+      if (typeof document === 'undefined') return;
+      const backdrop = document.getElementById('confirmModalBackdrop');
+      if (backdrop) backdrop.style.display = 'none';
+      const resolve = confirmModalResolve;
+      confirmModalResolve = null;
+      if (resolve) resolve(Boolean(confirmed));
+    }
+
+    function openConfirmModal(options = {}) {
+      if (typeof document === 'undefined') return Promise.resolve(false);
+      const backdrop = document.getElementById('confirmModalBackdrop');
+      if (!backdrop) return Promise.resolve(false);
+
+      const titleEl = document.getElementById('confirmModalTitle');
+      const messageEl = document.getElementById('confirmModalMessage');
+      const okBtn = document.getElementById('confirmModalOkBtn');
+      const cancelBtn = document.getElementById('confirmModalCancelBtn');
+
+      if (titleEl) titleEl.textContent = options.title || 'Are you sure?';
+      if (messageEl) messageEl.textContent = options.message || '';
+      if (okBtn) okBtn.textContent = options.confirmLabel || 'Confirm';
+
+      // A dialog that is already open has been superseded: release its caller
+      // as "cancelled" instead of leaving the promise hanging.
+      if (confirmModalResolve) {
+        const previous = confirmModalResolve;
+        confirmModalResolve = null;
+        previous(false);
+      }
+
+      backdrop.style.display = 'flex';
+      // Focus the safe choice so a stray Enter can never destroy data.
+      cancelBtn?.focus?.();
+
+      return new Promise(resolve => {
+        confirmModalResolve = resolve;
+      });
+    }
+
     function setCanvasBackground(color) {
       state.canvasBg = color === '#000000' ? '#000000' : '#ffffff';
       if (typeof document === 'undefined') return;

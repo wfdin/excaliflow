@@ -3192,6 +3192,7 @@
       if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
       if (document.getElementById('authModalBackdrop')?.style.display !== 'none') return;
       if (document.getElementById('workspacesModalBackdrop')?.style.display !== 'none') return;
+      if (isConfirmModalOpen()) return;
 
       if (state.editingTabId) return;
       const isEditing = Boolean(state.editingId);
@@ -3560,7 +3561,8 @@
 
     let workspaceSaveTimer = null;
     let dbSaveTimer = null;
-    let isSavingToDb = false;
+    let dbSaveInFlight = false;
+    let dbSaveQueued = false;
     let currentUser = null;
     let currentWorkspaceId = (function() {
       try {
@@ -3596,6 +3598,14 @@
         headers['Authorization'] = `Bearer ${token}`;
       }
       return headers;
+    }
+
+    // Workspaces are stored per account. Guests keep their work in
+    // localStorage only: the API has no notion of a per-browser guest, so
+    // allowing anonymous calls would make every visitor read and overwrite
+    // one shared "default" row in MySQL.
+    function isSignedIn() {
+      return !!getAuthToken();
     }
 
     function updateAuthUI() {
@@ -3637,9 +3647,16 @@
     async function saveWorkspaceToDatabase(wsId = null) {
       if (typeof fetch !== 'function' || typeof window === 'undefined') return false;
       if (state.tabs.length === 0) return false;
+      if (!isSignedIn()) return false;
+      // Serialize saves: the debounced auto-save and the unload flush could
+      // otherwise POST the same workspace at once and race on its tab rows.
+      if (dbSaveInFlight) {
+        dbSaveQueued = true;
+        return false;
+      }
       const targetId = wsId || currentWorkspaceId || 'default';
+      dbSaveInFlight = true;
       try {
-        isSavingToDb = true;
         updateDbSyncStatus('saving', 'Saving...');
         const payload = serializeWorkspace();
         const res = await fetch(apiUrl(`/api/workspace?id=${encodeURIComponent(targetId)}`), {
@@ -3663,12 +3680,17 @@
         updateDbSyncStatus('offline', 'DB Offline');
         return false;
       } finally {
-        isSavingToDb = false;
+        dbSaveInFlight = false;
+        if (dbSaveQueued) {
+          dbSaveQueued = false;
+          saveWorkspaceToDatabase();
+        }
       }
     }
 
     async function loadWorkspaceFromDatabase(wsId = null) {
       if (typeof fetch !== 'function' || typeof window === 'undefined') return false;
+      if (!isSignedIn()) return false;
       const targetId = wsId || currentWorkspaceId || 'default';
       try {
         updateDbSyncStatus('saving', 'Loading DB...');
@@ -3777,6 +3799,7 @@
 
     async function listUserWorkspaces() {
       if (typeof fetch !== 'function') return [];
+      if (!isSignedIn()) return [];
       try {
         const res = await fetch(apiUrl('/api/workspaces'), { headers: getAuthHeaders() });
         if (res.ok) {
@@ -3956,6 +3979,20 @@
       };
     }
 
+    let lastUnloadFlushAt = 0;
+
+    // Called when the page is hidden/unloaded. The browser can fire
+    // visibilitychange, pagehide and beforeunload for the same close, so a
+    // short gate keeps it to one flush. localStorage is written synchronously;
+    // the MySQL save only happens for signed-in users (see saveWorkspaceToStorage).
+    function flushWorkspaceNow() {
+      if (state.tabs.length === 0) return false;
+      const now = Date.now();
+      if (now - lastUnloadFlushAt < 1000) return false;
+      lastUnloadFlushAt = now;
+      return saveWorkspaceToStorage();
+    }
+
     function saveWorkspaceToStorage() {
       if (state.tabs.length === 0) return false;
       let ok = false;
@@ -3968,7 +4005,7 @@
           ok = false;
         }
       }
-      if (typeof fetch === 'function' && typeof window !== 'undefined') {
+      if (isSignedIn() && typeof fetch === 'function' && typeof window !== 'undefined') {
         saveWorkspaceToDatabase();
       }
       return ok;
@@ -4124,7 +4161,7 @@
             closeBtn.title = `Close ${tab.name}`;
             closeBtn.addEventListener?.('click', e => {
               e.stopPropagation?.();
-              closeCanvasTab(tab.id);
+              requestCloseCanvasTab(tab.id);
             });
             pill.appendChild?.(closeBtn);
           }
@@ -4329,6 +4366,33 @@
       return true;
     }
 
+    // Ask before dropping a canvas: its elements are gone for good, so a stray
+    // click on the little × must not delete work. closeCanvasTab() stays the
+    // synchronous primitive used by tests and internal callers.
+    async function requestCloseCanvasTab(tabId) {
+      ensureInitialTab();
+      const tab = state.tabs.find(t => t.id === tabId);
+      if (!tab) return false;
+
+      const isOnlyTab = state.tabs.length <= 1;
+      const tabElements = tab.id === state.activeTabId ? state.elements : tab.elements;
+      const elementCount = Array.isArray(tabElements) ? tabElements.length : 0;
+      const detail = elementCount > 0
+        ? `${elementCount} element${elementCount === 1 ? '' : 's'} on this canvas will be deleted.`
+        : 'This canvas has no elements yet.';
+
+      const confirmed = await openConfirmModal({
+        title: isOnlyTab ? 'Clear Canvas?' : 'Delete Canvas?',
+        message: isOnlyTab
+          ? `"${tab.name}" is your only canvas, so closing it clears the drawing and starts over. ${detail} This cannot be undone.`
+          : `"${tab.name}" will be removed. ${detail} This cannot be undone.`,
+        confirmLabel: isOnlyTab ? 'Clear Canvas' : 'Delete Canvas'
+      });
+
+      if (!confirmed) return false;
+      return closeCanvasTab(tabId);
+    }
+
     function closeCanvasTab(tabId) {
       if (state.editingId) commitInlineEditor();
       ensureInitialTab();
@@ -4413,6 +4477,59 @@
     function closeAllDropdowns() {
       if (typeof document === 'undefined') return;
       document.querySelectorAll('.dropdown-menu.open').forEach(m => m.classList.remove('open'));
+    }
+
+    /* -------------------------------------------------------------------------
+     * Confirmation dialog for destructive actions.
+     * openConfirmModal() resolves true only when the user explicitly confirms,
+     * so data is never deleted from a single stray click.
+     * ------------------------------------------------------------------------- */
+    let confirmModalResolve = null;
+
+    function isConfirmModalOpen() {
+      if (typeof document === 'undefined') return false;
+      const backdrop = document.getElementById('confirmModalBackdrop');
+      return Boolean(backdrop) && backdrop.style.display !== 'none';
+    }
+
+    function closeConfirmModal(confirmed = false) {
+      if (typeof document === 'undefined') return;
+      const backdrop = document.getElementById('confirmModalBackdrop');
+      if (backdrop) backdrop.style.display = 'none';
+      const resolve = confirmModalResolve;
+      confirmModalResolve = null;
+      if (resolve) resolve(Boolean(confirmed));
+    }
+
+    function openConfirmModal(options = {}) {
+      if (typeof document === 'undefined') return Promise.resolve(false);
+      const backdrop = document.getElementById('confirmModalBackdrop');
+      if (!backdrop) return Promise.resolve(false);
+
+      const titleEl = document.getElementById('confirmModalTitle');
+      const messageEl = document.getElementById('confirmModalMessage');
+      const okBtn = document.getElementById('confirmModalOkBtn');
+      const cancelBtn = document.getElementById('confirmModalCancelBtn');
+
+      if (titleEl) titleEl.textContent = options.title || 'Are you sure?';
+      if (messageEl) messageEl.textContent = options.message || '';
+      if (okBtn) okBtn.textContent = options.confirmLabel || 'Confirm';
+
+      // A dialog that is already open has been superseded: release its caller
+      // as "cancelled" instead of leaving the promise hanging.
+      if (confirmModalResolve) {
+        const previous = confirmModalResolve;
+        confirmModalResolve = null;
+        previous(false);
+      }
+
+      backdrop.style.display = 'flex';
+      // Focus the safe choice so a stray Enter can never destroy data.
+      cancelBtn?.focus?.();
+
+      return new Promise(resolve => {
+        confirmModalResolve = resolve;
+      });
     }
 
     function setCanvasBackground(color) {
@@ -4767,6 +4884,7 @@
         if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
         if (document.getElementById('authModalBackdrop')?.style.display !== 'none') return;
         if (document.getElementById('workspacesModalBackdrop')?.style.display !== 'none') return;
+        if (isConfirmModalOpen()) return;
 
         if (e.code === 'Space' && !state.editingId) {
           state.isSpacePanning = true;
@@ -5096,6 +5214,23 @@
         if (e.target === wsBackdrop) wsBackdrop.style.display = 'none';
       });
 
+      // Destructive-action confirmation dialog
+      const confirmBackdrop = document.getElementById('confirmModalBackdrop');
+      document.getElementById('confirmModalCancelBtn')?.addEventListener('click', () => closeConfirmModal(false));
+      document.getElementById('closeConfirmModalBtn')?.addEventListener('click', () => closeConfirmModal(false));
+      document.getElementById('confirmModalOkBtn')?.addEventListener('click', () => closeConfirmModal(true));
+      confirmBackdrop?.addEventListener('click', e => {
+        if (e.target === confirmBackdrop) closeConfirmModal(false);
+      });
+      window.addEventListener('keydown', e => {
+        if (!isConfirmModalOpen()) return;
+        // Enter is left to the focused button (Cancel is focused by default).
+        if (e.key === 'Escape') {
+          e.preventDefault?.();
+          closeConfirmModal(false);
+        }
+      });
+
       document.getElementById('sidebarToggleBtn')?.addEventListener('click', toggleSidebar);
       document.getElementById('prevCanvasBtn')?.addEventListener('click', () => stepCanvasTab(-1));
       document.getElementById('nextCanvasBtn')?.addEventListener('click', () => stepCanvasTab(1));
@@ -5103,15 +5238,14 @@
       document.getElementById('forkCanvasTabBtn')?.addEventListener('click', () => duplicateCanvasTab());
       document.getElementById('bottomAddTabBtn')?.addEventListener('click', () => createCanvasTab());
       document.getElementById('bottomForkTabBtn')?.addEventListener('click', () => duplicateCanvasTab());
-      window.addEventListener('beforeunload', () => {
-        saveWorkspaceToStorage();
-        try {
-          if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-            const payload = JSON.stringify(serializeWorkspace());
-            const blob = new Blob([payload], { type: 'application/json' });
-            navigator.sendBeacon(apiUrl('/api/workspace?id=default'), blob);
-          }
-        } catch (err) {}
+      // Persist on the way out. visibilitychange/pagehide also cover mobile
+      // and tab switches; the sendBeacon call was removed because it could not
+      // send the Authorization header (guests now never write to MySQL, so it
+      // would only ever get a 401).
+      window.addEventListener('beforeunload', flushWorkspaceNow);
+      window.addEventListener('pagehide', flushWorkspaceNow);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushWorkspaceNow();
       });
       document.getElementById('btnUndo')?.addEventListener('click', undo);
       document.getElementById('btnRedo')?.addEventListener('click', redo);
@@ -5362,6 +5496,10 @@
         stepCanvasTab,
         renameCanvasTab,
         closeCanvasTab,
+        requestCloseCanvasTab,
+        openConfirmModal,
+        closeConfirmModal,
+        isConfirmModalOpen,
         saveWorkspaceToStorage,
         loadWorkspaceFromStorage,
         saveWorkspaceToDatabase,

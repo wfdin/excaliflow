@@ -7,7 +7,8 @@
 
     let workspaceSaveTimer = null;
     let dbSaveTimer = null;
-    let isSavingToDb = false;
+    let dbSaveInFlight = false;
+    let dbSaveQueued = false;
     let currentUser = null;
     let currentWorkspaceId = (function() {
       try {
@@ -93,9 +94,15 @@
       if (typeof fetch !== 'function' || typeof window === 'undefined') return false;
       if (state.tabs.length === 0) return false;
       if (!isSignedIn()) return false;
+      // Serialize saves: the debounced auto-save and the unload flush could
+      // otherwise POST the same workspace at once and race on its tab rows.
+      if (dbSaveInFlight) {
+        dbSaveQueued = true;
+        return false;
+      }
       const targetId = wsId || currentWorkspaceId || 'default';
+      dbSaveInFlight = true;
       try {
-        isSavingToDb = true;
         updateDbSyncStatus('saving', 'Saving...');
         const payload = serializeWorkspace();
         const res = await fetch(apiUrl(`/api/workspace?id=${encodeURIComponent(targetId)}`), {
@@ -119,7 +126,11 @@
         updateDbSyncStatus('offline', 'DB Offline');
         return false;
       } finally {
-        isSavingToDb = false;
+        dbSaveInFlight = false;
+        if (dbSaveQueued) {
+          dbSaveQueued = false;
+          saveWorkspaceToDatabase();
+        }
       }
     }
 
@@ -596,7 +607,7 @@
             closeBtn.title = `Close ${tab.name}`;
             closeBtn.addEventListener?.('click', e => {
               e.stopPropagation?.();
-              closeCanvasTab(tab.id);
+              requestCloseCanvasTab(tab.id);
             });
             pill.appendChild?.(closeBtn);
           }
@@ -799,6 +810,33 @@
       renderCanvasTabs();
       saveWorkspaceToStorage();
       return true;
+    }
+
+    // Ask before dropping a canvas: its elements are gone for good, so a stray
+    // click on the little × must not delete work. closeCanvasTab() stays the
+    // synchronous primitive used by tests and internal callers.
+    async function requestCloseCanvasTab(tabId) {
+      ensureInitialTab();
+      const tab = state.tabs.find(t => t.id === tabId);
+      if (!tab) return false;
+
+      const isOnlyTab = state.tabs.length <= 1;
+      const tabElements = tab.id === state.activeTabId ? state.elements : tab.elements;
+      const elementCount = Array.isArray(tabElements) ? tabElements.length : 0;
+      const detail = elementCount > 0
+        ? `${elementCount} element${elementCount === 1 ? '' : 's'} on this canvas will be deleted.`
+        : 'This canvas has no elements yet.';
+
+      const confirmed = await openConfirmModal({
+        title: isOnlyTab ? 'Clear Canvas?' : 'Delete Canvas?',
+        message: isOnlyTab
+          ? `"${tab.name}" is your only canvas, so closing it clears the drawing and starts over. ${detail} This cannot be undone.`
+          : `"${tab.name}" will be removed. ${detail} This cannot be undone.`,
+        confirmLabel: isOnlyTab ? 'Clear Canvas' : 'Delete Canvas'
+      });
+
+      if (!confirmed) return false;
+      return closeCanvasTab(tabId);
     }
 
     function closeCanvasTab(tabId) {

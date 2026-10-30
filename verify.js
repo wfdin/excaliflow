@@ -131,6 +131,8 @@ const sandbox = {
   document: {
     body: { classList: { toggle: () => {} } },
     activeElement: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
     getElementById: () => ({
       width: 1440,
       height: 900,
@@ -527,6 +529,19 @@ function runMockReq(method, url) {
   assert.strictEqual(restoredOk, true, 'importExcalidrawJson should restore multi-tab workspace JSON');
   assert.strictEqual(app.state.tabs.length, 3, 'Restoring workspace JSON should bring back all 3 tabs');
   console.log('[PASS] 8. Multi-canvas tabs (create, switch, fork/duplicate, rename, close, Alt+1..9, localStorage & multi-tab JSON) verified');
+
+  // 9. Closing a canvas must ask for confirmation first.
+  const tabToKeep = app.state.tabs[app.state.tabs.length - 1];
+  const cancelledClose = app.requestCloseCanvasTab(tabToKeep.id);
+  app.closeConfirmModal(false);
+  assert.strictEqual(await cancelledClose, false, 'Cancelling the dialog must not close the canvas');
+  assert(app.state.tabs.some(t => t.id === tabToKeep.id), 'Canvas must survive a cancelled close');
+
+  const confirmedClose = app.requestCloseCanvasTab(tabToKeep.id);
+  app.closeConfirmModal(true);
+  assert.strictEqual(await confirmedClose, true, 'Confirming the dialog must close the canvas');
+  assert(!app.state.tabs.some(t => t.id === tabToKeep.id), 'Canvas must be removed after confirmation');
+  console.log('[PASS] 9. Destructive canvas close requires explicit confirmation');
 
   console.log('\nALL EXCALIFLOW VERIFICATION CHECKS PASSED SUCCESSFULLY!');
 })().catch(err => {

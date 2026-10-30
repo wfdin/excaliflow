@@ -390,6 +390,21 @@
     </div>
   </div>
 
+  <!-- Destructive Action Confirmation Modal -->
+  <div id="confirmModalBackdrop" class="modal-backdrop" style="display:none">
+    <div class="modal-card glass-panel" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle" aria-describedby="confirmModalMessage">
+      <div class="modal-header">
+        <h3 id="confirmModalTitle">Delete Canvas?</h3>
+        <button id="closeConfirmModalBtn" class="modal-close-btn" title="Cancel">✕</button>
+      </div>
+      <p id="confirmModalMessage" class="confirm-modal-message"></p>
+      <div class="modal-actions">
+        <button id="confirmModalCancelBtn" class="ui-btn">Cancel</button>
+        <button id="confirmModalOkBtn" class="ui-btn danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Backend API base URL (injected at build time from API_URL env; empty = same-origin) -->
   <script>
     window.EXCALIFLOW_API_BASE = "";

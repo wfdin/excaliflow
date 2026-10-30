@@ -146,6 +146,7 @@
         if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
         if (document.getElementById('authModalBackdrop')?.style.display !== 'none') return;
         if (document.getElementById('workspacesModalBackdrop')?.style.display !== 'none') return;
+        if (isConfirmModalOpen()) return;
 
         if (e.code === 'Space' && !state.editingId) {
           state.isSpacePanning = true;
@@ -475,6 +476,23 @@
         if (e.target === wsBackdrop) wsBackdrop.style.display = 'none';
       });
 
+      // Destructive-action confirmation dialog
+      const confirmBackdrop = document.getElementById('confirmModalBackdrop');
+      document.getElementById('confirmModalCancelBtn')?.addEventListener('click', () => closeConfirmModal(false));
+      document.getElementById('closeConfirmModalBtn')?.addEventListener('click', () => closeConfirmModal(false));
+      document.getElementById('confirmModalOkBtn')?.addEventListener('click', () => closeConfirmModal(true));
+      confirmBackdrop?.addEventListener('click', e => {
+        if (e.target === confirmBackdrop) closeConfirmModal(false);
+      });
+      window.addEventListener('keydown', e => {
+        if (!isConfirmModalOpen()) return;
+        // Enter is left to the focused button (Cancel is focused by default).
+        if (e.key === 'Escape') {
+          e.preventDefault?.();
+          closeConfirmModal(false);
+        }
+      });
+
       document.getElementById('sidebarToggleBtn')?.addEventListener('click', toggleSidebar);
       document.getElementById('prevCanvasBtn')?.addEventListener('click', () => stepCanvasTab(-1));
       document.getElementById('nextCanvasBtn')?.addEventListener('click', () => stepCanvasTab(1));
@@ -740,6 +758,10 @@
         stepCanvasTab,
         renameCanvasTab,
         closeCanvasTab,
+        requestCloseCanvasTab,
+        openConfirmModal,
+        closeConfirmModal,
+        isConfirmModalOpen,
         saveWorkspaceToStorage,
         loadWorkspaceFromStorage,
         saveWorkspaceToDatabase,

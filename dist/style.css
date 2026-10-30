@@ -507,6 +507,11 @@
       pointer-events: none;
     }
 
+    .ui-btn.danger {
+      color: var(--danger);
+      border-color: rgba(224, 49, 49, 0.35);
+    }
+
     .ui-btn.danger:hover {
       background: rgba(224, 49, 49, 0.12);
       color: var(--danger);
@@ -1034,6 +1039,18 @@
       font-size: 13px;
       font-weight: 600;
       margin-top: 6px;
+    }
+    .confirm-modal-message {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--text-secondary);
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 18px;
     }
     .auth-alert {
       padding: 8px 12px;
