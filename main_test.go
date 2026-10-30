@@ -237,3 +237,64 @@ func TestMultiUserWorkspaceIsolation(t *testing.T) {
 		}
 	}
 }
+
+// TestWorkspaceTabIDReuse covers the duplicate-key crash seen in production:
+// the browser generates tab ids that are only unique inside one workspace, so
+// saving a second workspace with a reused tab id must not fail on PRIMARY.
+func TestWorkspaceTabIDReuse(t *testing.T) {
+	_, _, _, router := setupTestApp(t)
+	uniqueSuffix := time.Now().UnixNano()
+
+	regBody := fmt.Sprintf(`{"username":"tabs_%d","email":"tabs_%d@test.com","password":"password123","fullName":"Tabs"}`, uniqueSuffix, uniqueSuffix)
+	regReq := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewBufferString(regBody))
+	regRec := httptest.NewRecorder()
+	router.ServeHTTP(regRec, regReq)
+	if regRec.Code != http.StatusCreated {
+		t.Fatalf("Failed to register user: %s", regRec.Body.String())
+	}
+
+	var authRes models.AuthResponse
+	if err := json.Unmarshal(regRec.Body.Bytes(), &authRes); err != nil {
+		t.Fatalf("Failed to parse register response: %v", err)
+	}
+
+	save := func(wsID, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/workspace?id="+wsID, bytes.NewBufferString(body))
+		req.Header.Set("Authorization", "Bearer "+authRes.Token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Same tab id, two different workspaces.
+	first := save(fmt.Sprintf("ws_reuse_a_%d", uniqueSuffix), `{
+		"type": "excaliflow", "version": 2, "source": "Excaliflow",
+		"activeTabId": "tab_1006_3520",
+		"tabs": [{"id":"tab_1006_3520","name":"Canvas 1","elements":[]}]
+	}`)
+	if first.Code != http.StatusOK {
+		t.Fatalf("First save failed with %d: %s", first.Code, first.Body.String())
+	}
+
+	second := save(fmt.Sprintf("ws_reuse_b_%d", uniqueSuffix), `{
+		"type": "excaliflow", "version": 2, "source": "Excaliflow",
+		"activeTabId": "tab_1006_3520",
+		"tabs": [{"id":"tab_1006_3520","name":"Canvas 1","elements":[]}]
+	}`)
+	if second.Code != http.StatusOK {
+		t.Fatalf("Second workspace with reused tab id failed with %d: %s", second.Code, second.Body.String())
+	}
+
+	// Duplicate tab ids inside a single payload must be normalized too.
+	duplicate := save(fmt.Sprintf("ws_reuse_c_%d", uniqueSuffix), `{
+		"type": "excaliflow", "version": 2, "source": "Excaliflow",
+		"activeTabId": "tab_dup",
+		"tabs": [
+			{"id":"tab_dup","name":"Canvas 1","elements":[]},
+			{"id":"tab_dup","name":"Canvas 2","elements":[]}
+		]
+	}`)
+	if duplicate.Code != http.StatusOK {
+		t.Fatalf("Save with duplicate tab ids failed with %d: %s", duplicate.Code, duplicate.Body.String())
+	}
+}
